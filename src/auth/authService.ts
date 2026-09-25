@@ -194,11 +194,40 @@ export function onAuthStateChange(
 export async function requestPasswordReset(emailInput: string): Promise<void> {
   requireConfigured()
   const email = parse(emailSchema, emailInput)
-  const redirectTo = typeof window !== 'undefined' ? window.location.origin : env.publicBaseUrl
 
   try {
-    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo })
+    const { error } = await supabase.auth.resetPasswordForEmail(email)
     if (error) throw error
+  } catch (cause) {
+    throw toAuthError(cause)
+  }
+}
+
+/**
+ * Verify the emailed OTP and set the new password in one step.
+ * The recovery flag stays on until the password write succeeds so App
+ * does not drop the player into the game with the old password still set.
+ */
+export async function completePasswordReset(
+  emailInput: string,
+  codeInput: string,
+  newPassword: string,
+): Promise<void> {
+  requireConfigured()
+  const email = parse(emailSchema, emailInput)
+  const token = parse(otpSchema, codeInput)
+  const password = parse(passwordSchema, newPassword)
+
+  try {
+    const { data, error } = await supabase.auth.verifyOtp({ email, token, type: 'recovery' })
+    if (error) throw error
+    if (!data.session) throw new AuthError('INVALID_OTP', 'That code is not valid. Check the digits and try again.')
+
+    beginPasswordRecovery()
+
+    const { error: passwordError } = await supabase.auth.updateUser({ password })
+    if (passwordError) throw passwordError
+    endPasswordRecovery()
   } catch (cause) {
     throw toAuthError(cause)
   }

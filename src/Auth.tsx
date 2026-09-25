@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { CREDENTIAL_RULES } from './lib/validation'
 import {
+  completePasswordReset,
   login,
   register,
   requestPasswordReset,
@@ -12,12 +13,13 @@ import { env } from './lib/env'
 import { useIsRecoveringPassword } from './auth/recoveryState'
 import { enableGuestPlay } from './auth/guestPlay'
 
-type Mode = 'login' | 'register' | 'forgot' | 'reset'
+type Mode = 'login' | 'register' | 'forgot' | 'otp' | 'reset'
 
 const TITLES: Record<Mode, string> = {
   login: 'Sign In',
   register: 'Create Account',
   forgot: 'Forgot password?',
+  otp: 'Enter Code',
   reset: 'Set New Password',
 }
 
@@ -30,13 +32,14 @@ export default function Auth() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [code, setCode] = useState('')
   const [info, setInfo] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
   const [errorCode, setErrorCode] = useState<AuthErrorCode | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
-    if (recovering) setMode('reset')
+    if (recovering) setMode((current) => (current === 'otp' ? current : 'reset'))
   }, [recovering])
 
   const goTo = (next: Mode) => {
@@ -89,7 +92,26 @@ export default function Auth() {
     e.preventDefault()
     void run(async () => {
       await requestPasswordReset(email)
-      setInfo('Check your email for the reset link')
+      setMode('otp')
+      setCode('')
+      setPassword('')
+      setConfirmPassword('')
+      setInfo('Enter the code we sent to your email.')
+    })
+  }
+
+  const handleOtpReset = (e: React.FormEvent) => {
+    e.preventDefault()
+    void run(async () => {
+      if (password !== confirmPassword) {
+        setErrorMsg('Passwords do not match.')
+        setErrorCode('UNKNOWN')
+        return
+      }
+      await completePasswordReset(email, code, password)
+      setCode('')
+      setPassword('')
+      setConfirmPassword('')
     })
   }
 
@@ -186,7 +208,7 @@ export default function Auth() {
         {mode === 'forgot' && (
           <form onSubmit={handleForgot} className="flex flex-col gap-4">
             <p className="text-white/60 text-sm text-center">
-              Enter your account email and we will send a reset link.
+              Enter your account email and we will send a 6–8 digit code.
             </p>
             <input
               type="email"
@@ -203,7 +225,59 @@ export default function Auth() {
               disabled={isLoading}
               className="mt-2 w-full rounded-2xl py-4 text-lg font-black uppercase text-[#123] bg-[#8ec5ff] disabled:opacity-50"
             >
-              {isLoading ? 'Sending...' : 'Send reset link'}
+              {isLoading ? 'Sending...' : 'Send code'}
+            </button>
+          </form>
+        )}
+
+        {mode === 'otp' && (
+          <form onSubmit={handleOtpReset} className="flex flex-col gap-4">
+            <p className="text-white/60 text-sm text-center">
+              Enter the code sent to <span className="text-white">{email}</span>, then choose a new password.
+            </p>
+            <input
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, CREDENTIAL_RULES.otpMaxLength))}
+              placeholder={'0'.repeat(CREDENTIAL_RULES.otpLength)}
+              className={`${INPUT_CLASS} text-center text-2xl tracking-[0.25em]`}
+              required
+            />
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="New Password"
+              autoComplete="new-password"
+              minLength={CREDENTIAL_RULES.passwordMinLength}
+              className={INPUT_CLASS}
+              required
+            />
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Confirm Password"
+              autoComplete="new-password"
+              minLength={CREDENTIAL_RULES.passwordMinLength}
+              className={INPUT_CLASS}
+              required
+            />
+            {feedback}
+            <button
+              type="submit"
+              disabled={isLoading || code.length < CREDENTIAL_RULES.otpMinLength}
+              className="mt-2 w-full rounded-2xl py-4 text-lg font-black uppercase text-[#123] bg-[#6ee7a8] disabled:opacity-50"
+            >
+              {isLoading ? 'Saving...' : 'Verify and save'}
+            </button>
+            <button type="button" onClick={() => goTo('forgot')} className="text-sm font-bold text-[#8ec5ff]">
+              Send a new code
+            </button>
+            <button type="button" onClick={() => goTo('login')} className="text-sm font-bold text-white/40">
+              Back to sign in.
             </button>
           </form>
         )}
@@ -244,7 +318,7 @@ export default function Auth() {
           </form>
         )}
 
-        {mode !== 'reset' && (
+        {mode !== 'reset' && mode !== 'otp' && (
           <>
             <button
               onClick={() => goTo(mode === 'register' ? 'login' : mode === 'login' ? 'register' : 'login')}
