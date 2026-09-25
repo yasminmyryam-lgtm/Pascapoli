@@ -34,6 +34,12 @@ function isPermissionDenied(error: { code?: string }): boolean {
 const PERMISSION_HINT =
   'Database permissions are missing. Run supabase/migrations/0002_profiles_grants.sql in the SQL Editor.'
 
+function fallbackProfile(userId: string, username?: string | null): Profile {
+  const raw = (username ?? '').replace(/[^A-Za-z0-9_]/g, '')
+  const safe = raw.length >= 3 ? raw.slice(0, 20) : `player_${userId.slice(0, 6)}`
+  return { id: userId, username: safe }
+}
+
 export async function fetchProfile(userId: string): Promise<Profile | null> {
   const { data, error } = await supabase
     .from('profiles')
@@ -42,17 +48,26 @@ export async function fetchProfile(userId: string): Promise<Profile | null> {
     .maybeSingle<ProfileRow>()
 
   if (error) {
-    if (isMissingTable(error)) {
-      throw new AuthError(
-        'UNKNOWN',
-        'Profiles table not found. Run supabase/migrations/0001_profiles.sql in the SQL Editor.',
-      )
+    // Missing tables or grants must never block sign-in.
+    if (isMissingTable(error) || isPermissionDenied(error)) {
+      console.warn('[profile] profiles table unavailable; using local fallback.', error.message ?? PERMISSION_HINT)
+      const { data: auth } = await supabase.auth.getUser()
+      const metaName = (auth.user?.user_metadata as { username?: unknown } | undefined)?.username
+      return fallbackProfile(userId, typeof metaName === 'string' ? metaName : auth.user?.email?.split('@')[0])
     }
-    if (isPermissionDenied(error)) throw new AuthError('UNKNOWN', PERMISSION_HINT)
     throw toAuthError(error)
   }
 
-  return data ? { id: data.id, username: data.username } : null
+  if (data) return { id: data.id, username: data.username }
+
+  const { data: auth } = await supabase.auth.getUser()
+  const metaName = (auth.user?.user_metadata as { username?: unknown } | undefined)?.username
+  const created = fallbackProfile(userId, typeof metaName === 'string' ? metaName : auth.user?.email?.split('@')[0])
+  const { error: insertError } = await supabase.from('profiles').insert({ id: userId, username: created.username })
+  if (insertError && !isMissingTable(insertError) && !isPermissionDenied(insertError) && insertError.code !== '23505') {
+    console.warn('[profile] could not create profile row:', insertError.message)
+  }
+  return created
 }
 
 /**
@@ -81,13 +96,10 @@ export async function updateUsername(userId: string, nextUsername: string): Prom
     if (error.code === '23505') {
       throw new AuthError('USERNAME_TAKEN', 'That username is taken. Pick another.')
     }
-    if (isMissingTable(error)) {
-      throw new AuthError(
-        'UNKNOWN',
-        'Profiles table not found. Run supabase/migrations/0001_profiles.sql in the SQL Editor.',
-      )
+    if (isMissingTable(error) || isPermissionDenied(error)) {
+      console.warn('[profile] cannot rename — profiles table unavailable.')
+      return { id: userId, username: parsed.data }
     }
-    if (isPermissionDenied(error)) throw new AuthError('UNKNOWN', PERMISSION_HINT)
     // 23514: a CHECK constraint rejected the value (length or charset).
     if (error.code === '23514') {
       throw new AuthError('UNKNOWN', 'Username can use 3–20 letters, numbers and underscore only.')

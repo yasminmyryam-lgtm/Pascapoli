@@ -25,6 +25,22 @@ function emit() {
   for (const listener of listeners) listener()
 }
 
+/** True when the current URL is a Supabase recovery redirect. */
+export function urlLooksLikePasswordRecovery(): boolean {
+  if (typeof window === 'undefined') return false
+  const hash = window.location.hash.replace(/^#/, '')
+  const search = window.location.search.replace(/^\?/, '')
+  const fromHash = new URLSearchParams(hash)
+  const fromSearch = new URLSearchParams(search)
+  return fromHash.get('type') === 'recovery' || fromSearch.get('type') === 'recovery'
+}
+
+export function clearRecoveryParamsFromUrl(): void {
+  if (typeof window === 'undefined') return
+  if (!window.location.hash && !window.location.search) return
+  window.history.replaceState(null, '', window.location.pathname)
+}
+
 export function beginPasswordRecovery(): void {
   if (isRecovering) return
   isRecovering = true

@@ -17,6 +17,7 @@ import { useSession } from './auth/useSession'
 import { logout as signOut } from './auth/authService'
 import { toAuthError } from './auth/errors'
 import { useIsRecoveringPassword } from './auth/recoveryState'
+import { disableGuestPlay, useGuestPlay } from './auth/guestPlay'
 import { useProfile } from './profile/useProfile'
 import { CREDENTIAL_RULES } from './lib/validation'
 import { syncWallet } from './economy/economyApi'
@@ -61,6 +62,7 @@ const CHAR_FILTERS: Array<'ALL' | Rarity> = ['ALL', 'FREE', 'COMMON', 'RARE', 'E
 export default function App() {
   const { status: sessionStatus, userId, email, username } = useSession()
   const isRecoveringPassword = useIsRecoveringPassword()
+  const isGuestPlay = useGuestPlay()
   // Profile is the source of truth for the display name; the signup metadata
   // username is only a fallback while the row loads.
   const { profile, isLoading: isProfileLoading, error: profileError, rename } = useProfile(userId)
@@ -129,14 +131,12 @@ export default function App() {
     if (dataConnection.current || peerInstance.current) terminateNetworkSession()
     setIsGameEngineMounted(false)
     setLogoutError('')
+    disableGuestPlay()
     try {
       await signOut()
       setShowSettings(false)
-      // `useSession` observes the sign-out and swaps in the Auth screen; the
-      // save slot follows via the effect above.
     } catch (cause) {
-      // Leaving the panel open with a message beats silently appearing to stay
-      // signed in.
+      setShowSettings(false)
       setLogoutError(toAuthError(cause).message)
     }
   }
@@ -251,7 +251,8 @@ export default function App() {
 
   // A verified recovery code produces a real session, so authentication alone
   // is not enough to enter the game — the new password must be saved first.
-  if (sessionStatus === 'ANONYMOUS' || isRecoveringPassword) return <Auth />
+  if (isRecoveringPassword) return <Auth />
+  if (sessionStatus === 'ANONYMOUS' && !isGuestPlay) return <Auth />
 
   return (
     <main className="min-h-screen w-full bg-[#1b1429] font-display pb-32" style={{ background: 'radial-gradient(150% 100% at 50% 0%, #2f1d4a 0%, #11091c 100%)' }}>

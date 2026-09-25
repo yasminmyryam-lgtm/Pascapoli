@@ -115,13 +115,8 @@ export function toAuthError(cause: unknown): AuthError {
   }
 
   if (code === 'UNKNOWN') {
-    // Developer-facing only. Contains no password, OTP or token material.
     console.error('[auth] unmapped error:', raw)
-    // In dev, show the provider's wording too — otherwise an unmapped case is
-    // invisible behind the generic message. Stripped from production builds.
-    if (import.meta.env.DEV) {
-      return new AuthError(code, `${MESSAGES.UNKNOWN} (dev: ${raw})`)
-    }
+    return new AuthError(code, raw || MESSAGES.UNKNOWN)
   }
 
   return new AuthError(code, MESSAGES[code])

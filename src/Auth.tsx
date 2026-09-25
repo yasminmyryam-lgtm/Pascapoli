@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { CREDENTIAL_RULES } from './lib/validation'
 import {
   login,
@@ -6,43 +6,38 @@ import {
   requestPasswordReset,
   resendConfirmationEmail,
   updatePassword,
-  verifyPasswordResetCode,
 } from './auth/authService'
-import { toAuthError, type AuthErrorCode } from './auth/errors'
+import { describeError, toAuthError, type AuthErrorCode } from './auth/errors'
 import { env } from './lib/env'
+import { useIsRecoveringPassword } from './auth/recoveryState'
+import { enableGuestPlay } from './auth/guestPlay'
 
-/**
- * Authentication screen. Visual language is unchanged from the original local
- * version; only the logic behind it moved to Supabase.
- *
- * Recovery is a real four-step flow — request code, verify code, set password,
- * sign in — backed by Supabase's 6-digit email OTP. No code is ever generated
- * or displayed in the browser.
- */
-
-type Mode = 'login' | 'register' | 'forgot' | 'otp' | 'reset'
+type Mode = 'login' | 'register' | 'forgot' | 'reset'
 
 const TITLES: Record<Mode, string> = {
   login: 'Sign In',
   register: 'Create Account',
-  forgot: 'Account Recovery',
-  otp: 'Enter Code',
+  forgot: 'Forgot password?',
   reset: 'Set New Password',
 }
 
 const INPUT_CLASS = 'w-full rounded-2xl bg-black/25 px-5 py-4 text-white outline-none'
 
 export default function Auth() {
-  const [mode, setMode] = useState<Mode>('login')
+  const recovering = useIsRecoveringPassword()
+  const [mode, setMode] = useState<Mode>(recovering ? 'reset' : 'login')
   const [email, setEmail] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [code, setCode] = useState('')
   const [info, setInfo] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
   const [errorCode, setErrorCode] = useState<AuthErrorCode | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+
+  useEffect(() => {
+    if (recovering) setMode('reset')
+  }, [recovering])
 
   const goTo = (next: Mode) => {
     setMode(next)
@@ -51,7 +46,6 @@ export default function Auth() {
     setInfo('')
   }
 
-  /** Every submit handler shares this shape: clear, run, map errors, stop loading. */
   const run = async (action: () => Promise<void>) => {
     setErrorMsg('')
     setErrorCode(null)
@@ -61,7 +55,7 @@ export default function Auth() {
       await action()
     } catch (cause) {
       const mapped = toAuthError(cause)
-      setErrorMsg(mapped.message)
+      setErrorMsg(mapped.message || describeError(cause))
       setErrorCode(mapped.code)
     } finally {
       setIsLoading(false)
@@ -85,7 +79,6 @@ export default function Auth() {
           setMode('login')
           setPassword('')
         }
-        // On SIGNED_IN the session listener in App swaps this screen out.
         return
       }
       await login({ email, password })
@@ -96,18 +89,7 @@ export default function Auth() {
     e.preventDefault()
     void run(async () => {
       await requestPasswordReset(email)
-      // Deliberately identical whether or not the account exists.
-      setMode('otp')
-      setInfo('If an account exists for this email, a recovery code has been sent.')
-    })
-  }
-
-  const handleVerifyCode = (e: React.FormEvent) => {
-    e.preventDefault()
-    void run(async () => {
-      await verifyPasswordResetCode(email, code)
-      setMode('reset')
-      setInfo('Code accepted. Choose a new password.')
+      setInfo('Check your email for the reset link')
     })
   }
 
@@ -119,12 +101,9 @@ export default function Auth() {
         setErrorCode('UNKNOWN')
         return
       }
-      // Clears the recovery flag on success, which lets `App` render the game
-      // using the session already established by the verified code.
       await updatePassword(password)
       setPassword('')
       setConfirmPassword('')
-      setCode('')
     })
   }
 
@@ -206,7 +185,9 @@ export default function Auth() {
 
         {mode === 'forgot' && (
           <form onSubmit={handleForgot} className="flex flex-col gap-4">
-            <p className="text-white/60 text-sm text-center">Enter your account email and we'll send you a recovery code.</p>
+            <p className="text-white/60 text-sm text-center">
+              Enter your account email and we will send a reset link.
+            </p>
             <input
               type="email"
               value={email}
@@ -222,37 +203,7 @@ export default function Auth() {
               disabled={isLoading}
               className="mt-2 w-full rounded-2xl py-4 text-lg font-black uppercase text-[#123] bg-[#8ec5ff] disabled:opacity-50"
             >
-              {isLoading ? 'Sending...' : 'Send Code'}
-            </button>
-          </form>
-        )}
-
-        {mode === 'otp' && (
-          <form onSubmit={handleVerifyCode} className="flex flex-col gap-4">
-            <p className="text-white/60 text-sm text-center">
-              Enter the {CREDENTIAL_RULES.otpLength}-digit code sent to <span className="text-white">{email}</span>.
-            </p>
-            <input
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, CREDENTIAL_RULES.otpMaxLength))}
-              placeholder={'0'.repeat(CREDENTIAL_RULES.otpLength)}
-              // Looser tracking than a 6-digit field so a 10-digit code still fits.
-              className={`${INPUT_CLASS} text-center text-2xl tracking-[0.25em]`}
-              required
-            />
-            {feedback}
-            <button
-              type="submit"
-              disabled={isLoading || code.length < CREDENTIAL_RULES.otpMinLength}
-              className="mt-2 w-full rounded-2xl py-4 text-lg font-black uppercase text-[#123] bg-[#6ee7a8] disabled:opacity-50"
-            >
-              {isLoading ? 'Verifying...' : 'Verify Code'}
-            </button>
-            <button type="button" onClick={() => goTo('forgot')} className="text-sm font-bold text-[#8ec5ff]">
-              Send a new code
+              {isLoading ? 'Sending...' : 'Send reset link'}
             </button>
           </form>
         )}
@@ -260,7 +211,7 @@ export default function Auth() {
         {mode === 'reset' && (
           <form onSubmit={handleReset} className="flex flex-col gap-4">
             <p className="text-white/60 text-sm text-center">
-              Code verified. Choose a new password to finish and start playing.
+              Choose a new password. You will stay signed in after it is saved.
             </p>
             <input
               type="password"
@@ -288,25 +239,31 @@ export default function Auth() {
               disabled={isLoading}
               className="mt-2 w-full rounded-2xl py-4 text-lg font-black uppercase text-[#123] bg-[#6ee7a8] disabled:opacity-50"
             >
-              {isLoading ? 'Saving...' : 'Save'}
+              {isLoading ? 'Saving...' : 'Save and play'}
             </button>
           </form>
         )}
 
-        {/* Hidden during 'reset': a recovery session is already active, so
-            leaving here would strand the player signed in with the old
-            password still unchanged. */}
         {mode !== 'reset' && (
-          <button
-            onClick={() => goTo(mode === 'register' ? 'login' : mode === 'login' ? 'register' : 'login')}
-            className="mt-6 w-full text-sm font-bold text-white/40"
-          >
-            {mode === 'register'
-              ? 'Already have an account? Tap here.'
-              : mode === 'login'
-                ? "Don't have an account? Create one."
-                : 'Back to sign in.'}
-          </button>
+          <>
+            <button
+              onClick={() => goTo(mode === 'register' ? 'login' : mode === 'login' ? 'register' : 'login')}
+              className="mt-6 w-full text-sm font-bold text-white/40"
+            >
+              {mode === 'register'
+                ? 'Already have an account? Tap here.'
+                : mode === 'login'
+                  ? "Don't have an account? Create one."
+                  : 'Back to sign in.'}
+            </button>
+            <button
+              type="button"
+              onClick={() => enableGuestPlay()}
+              className="mt-3 w-full rounded-2xl border border-white/15 bg-white/5 py-3 text-sm font-black uppercase text-white/80"
+            >
+              Play as Guest
+            </button>
+          </>
         )}
       </div>
     </div>

@@ -2,6 +2,12 @@ import { useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { isFounderEmail } from '../founder'
 import { getSession, onAuthStateChange } from './authService'
+import {
+  beginPasswordRecovery,
+  clearRecoveryParamsFromUrl,
+  urlLooksLikePasswordRecovery,
+} from './recoveryState'
+import { disableGuestPlay } from './guestPlay'
 
 export type SessionStatus = 'LOADING' | 'AUTHENTICATED' | 'ANONYMOUS'
 
@@ -39,10 +45,7 @@ function fromSession(session: Session | null): SessionState {
 
 /**
  * Restores the persisted Supabase session on mount and then tracks sign-in,
- * sign-out and silent token refresh.
- *
- * `LOADING` exists so the app can avoid flashing the sign-in screen at a player
- * who is already authenticated — restoring the session is asynchronous.
+ * sign-out, silent token refresh, and password-recovery redirects.
  */
 export function useSession(): SessionState {
   const [state, setState] = useState<SessionState>({ ...ANONYMOUS, status: 'LOADING' })
@@ -50,19 +53,25 @@ export function useSession(): SessionState {
   useEffect(() => {
     let cancelled = false
 
+    if (urlLooksLikePasswordRecovery()) beginPasswordRecovery()
+
     getSession()
       .then((session) => {
         if (!cancelled) setState(fromSession(session))
       })
       .catch((cause: unknown) => {
-        // A failed restore is not fatal: treat the player as signed out and let
-        // them retry through the form, which surfaces a real error message.
         console.error('[auth] session restore failed:', cause)
         if (!cancelled) setState(ANONYMOUS)
       })
 
-    const unsubscribe = onAuthStateChange((session) => {
-      if (!cancelled) setState(fromSession(session))
+    const unsubscribe = onAuthStateChange((session, event) => {
+      if (cancelled) return
+      if (event === 'PASSWORD_RECOVERY') {
+        beginPasswordRecovery()
+        clearRecoveryParamsFromUrl()
+      }
+      if (event === 'SIGNED_IN' || event === 'PASSWORD_RECOVERY') disableGuestPlay()
+      setState(fromSession(session))
     })
 
     return () => {

@@ -1,4 +1,4 @@
-import type { Session, User } from '@supabase/supabase-js'
+import type { AuthChangeEvent, Session, User } from '@supabase/supabase-js'
 import type { z } from 'zod'
 import { supabase } from '../lib/supabase'
 import { env } from '../lib/env'
@@ -75,9 +75,22 @@ export async function register(input: RegisterInput): Promise<RegisterResult> {
     })
     if (error) throw error
 
+    // Auto-confirm / disabled email confirmation returns a session immediately.
     if (data.session && data.user) {
       return { status: 'SIGNED_IN', session: data.session, user: data.user }
     }
+
+    // Some projects attach the session a tick later — pick it up if present.
+    const { data: existing } = await supabase.auth.getSession()
+    if (existing.session?.user) {
+      return { status: 'SIGNED_IN', session: existing.session, user: existing.session.user }
+    }
+
+    // Empty identities usually means the email is already registered.
+    if (data.user && (data.user.identities?.length ?? 0) === 0) {
+      throw new AuthError('EMAIL_TAKEN', 'That email cannot be used. Try signing in instead.')
+    }
+
     return { status: 'CONFIRMATION_REQUIRED' }
   } catch (cause) {
     throw toAuthError(cause)
@@ -155,10 +168,16 @@ export async function getSession(): Promise<Session | null> {
   }
 }
 
-/** Subscribes to sign-in / sign-out / token-refresh. Returns an unsubscribe. */
-export function onAuthStateChange(handler: (session: Session | null) => void): () => void {
+/** Subscribes to sign-in / sign-out / token-refresh / recovery. Returns an unsubscribe. */
+export function onAuthStateChange(
+  handler: (session: Session | null, event: AuthChangeEvent) => void,
+): () => void {
   if (!env.isConfigured) return () => {}
-  const { data } = supabase.auth.onAuthStateChange((_event, session) => handler(session))
+  const { data } = supabase.auth.onAuthStateChange((event, session) => {
+    if (event === 'PASSWORD_RECOVERY') beginPasswordRecovery()
+    if (event === 'SIGNED_OUT') endPasswordRecovery()
+    handler(session, event)
+  })
   return () => data.subscription.unsubscribe()
 }
 
@@ -173,22 +192,15 @@ export function onAuthStateChange(handler: (session: Session | null) => void): (
  * this endpoint from becoming an account-existence oracle.
  */
 export async function requestPasswordReset(emailInput: string): Promise<void> {
+  requireConfigured()
   const email = parse(emailSchema, emailInput)
+  const redirectTo = typeof window !== 'undefined' ? window.location.origin : env.publicBaseUrl
 
   try {
-    const { error } = await supabase.auth.resetPasswordForEmail(email)
-    // Rate limiting is the one condition worth surfacing, because the player
-    // needs to know to wait rather than to keep retrying.
-    if (error) {
-      const mapped = toAuthError(error)
-      if (mapped.code === 'RATE_LIMITED' || mapped.code === 'NETWORK') throw mapped
-      // Anything else (including "user not found") is swallowed on purpose.
-      console.error('[auth] reset request suppressed:', mapped.code)
-    }
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo })
+    if (error) throw error
   } catch (cause) {
-    const mapped = toAuthError(cause)
-    if (mapped.code === 'RATE_LIMITED' || mapped.code === 'NETWORK') throw mapped
-    console.error('[auth] reset request suppressed:', mapped.code)
+    throw toAuthError(cause)
   }
 }
 

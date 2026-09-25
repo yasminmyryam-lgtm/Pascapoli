@@ -22,7 +22,7 @@ export const supabase: SupabaseClient = createClient(url, key, {
   auth: {
     persistSession: env.isConfigured,
     autoRefreshToken: env.isConfigured,
-    detectSessionInUrl: false,
+    detectSessionInUrl: true,
     storageKey: 'pastapoli.auth.session',
   },
 })
