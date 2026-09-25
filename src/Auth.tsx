@@ -9,6 +9,7 @@ import {
   verifyPasswordResetCode,
 } from './auth/authService'
 import { toAuthError, type AuthErrorCode } from './auth/errors'
+import { env } from './lib/env'
 
 /**
  * Authentication screen. Visual language is unchanged from the original local
@@ -138,6 +139,11 @@ export default function Auth() {
     <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 md:p-8 bg-[#1a0d2e]">
       <div className="w-full max-w-md rounded-[40px] border border-white/10 bg-[#2b1c47] p-8 shadow-2xl">
         <h2 className="text-3xl font-black text-white text-center mb-6">{TITLES[mode]}</h2>
+        {!env.isConfigured && (
+          <p className="mb-4 text-center text-xs font-bold text-[#ffd24d]">
+            Sign-in is unavailable on this deploy. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, then rebuild.
+          </p>
+        )}
 
         {(mode === 'login' || mode === 'register') && (
           <form onSubmit={handleAuth} className="flex flex-col gap-4">

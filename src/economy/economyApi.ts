@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase'
+import { env } from '../lib/env'
 import { diamondReviveCost, isAdRevive } from '../../shared/economy'
 import { setState } from '../store'
 
@@ -19,9 +20,14 @@ function economyBaseUrl(): string {
 }
 
 async function authHeaders(): Promise<Record<string, string>> {
-  const { data } = await supabase.auth.getSession()
-  const token = data.session?.access_token
-  return token ? { Authorization: `Bearer ${token}` } : {}
+  if (!env.isConfigured) return {}
+  try {
+    const { data } = await supabase.auth.getSession()
+    const token = data.session?.access_token
+    return token ? { Authorization: `Bearer ${token}` } : {}
+  } catch {
+    return {}
+  }
 }
 
 async function postJson<T>(path: string, body: unknown): Promise<{ ok: boolean; status: number; data: T | null }> {

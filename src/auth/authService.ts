@@ -1,11 +1,21 @@
 import type { Session, User } from '@supabase/supabase-js'
 import type { z } from 'zod'
 import { supabase } from '../lib/supabase'
+import { env } from '../lib/env'
 import { CREDENTIAL_RULES, emailSchema, otpSchema, passwordSchema, usernameSchema } from '../lib/validation'
 import { AuthError, toAuthError } from './errors'
 import { beginPasswordRecovery, endPasswordRecovery } from './recoveryState'
 
 export { CREDENTIAL_RULES }
+
+function requireConfigured() {
+  if (!env.isConfigured) {
+    throw new AuthError(
+      'UNKNOWN',
+      'Sign-in is not configured on this deploy. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, then rebuild.',
+    )
+  }
+}
 
 /**
  * AUTHENTICATION SERVICE
@@ -50,6 +60,7 @@ export type RegisterResult =
 /* --- Registration -------------------------------------------------------- */
 
 export async function register(input: RegisterInput): Promise<RegisterResult> {
+  requireConfigured()
   const email = parse(emailSchema, input.email)
   const username = parse(usernameSchema, input.username)
   const password = parse(passwordSchema, input.password)
@@ -76,6 +87,7 @@ export async function register(input: RegisterInput): Promise<RegisterResult> {
 /* --- Login / logout ------------------------------------------------------ */
 
 export async function login(input: LoginInput): Promise<Session> {
+  requireConfigured()
   const email = parse(emailSchema, input.email)
   // Not length-validated: an existing short password must still be able to
   // sign in, and the provider is the authority on whether it matches.
@@ -133,6 +145,7 @@ export async function resendConfirmationEmail(emailInput: string): Promise<void>
 /* --- Session ------------------------------------------------------------- */
 
 export async function getSession(): Promise<Session | null> {
+  if (!env.isConfigured) return null
   try {
     const { data, error } = await supabase.auth.getSession()
     if (error) throw error
@@ -144,6 +157,7 @@ export async function getSession(): Promise<Session | null> {
 
 /** Subscribes to sign-in / sign-out / token-refresh. Returns an unsubscribe. */
 export function onAuthStateChange(handler: (session: Session | null) => void): () => void {
+  if (!env.isConfigured) return () => {}
   const { data } = supabase.auth.onAuthStateChange((_event, session) => handler(session))
   return () => data.subscription.unsubscribe()
 }

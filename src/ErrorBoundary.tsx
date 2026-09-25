@@ -1,16 +1,17 @@
 import React from 'react'
 
 type Props = { children: React.ReactNode; onClose?: () => void }
-type State = { hasError: boolean }
+type State = { hasError: boolean; message: string }
 
 export default class ErrorBoundary extends React.Component<Props, State> {
   constructor(props: Props) {
     super(props)
-    this.state = { hasError: false }
+    this.state = { hasError: false, message: '' }
   }
 
-  static getDerivedStateFromError(): State {
-    return { hasError: true }
+  static getDerivedStateFromError(error: unknown): State {
+    const message = error instanceof Error ? error.message : 'Something went wrong while loading Pastapoli.'
+    return { hasError: true, message }
   }
 
   componentDidCatch(error: unknown) {
@@ -21,14 +22,17 @@ export default class ErrorBoundary extends React.Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black/90 p-6 text-center font-display">
+        <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#11091c] p-6 text-center font-display">
           <h2 className="mb-4 text-3xl font-black text-white">Something broke 🍝</h2>
-          <p className="mb-8 max-w-sm text-sm font-bold text-white/50">
+          <p className="mb-4 max-w-sm text-sm font-bold text-white/50">
             Don't worry, your progress is saved. Try again.
           </p>
+          {this.state.message && (
+            <p className="mb-8 max-w-md text-xs font-bold text-[#ff7ad9]">{this.state.message}</p>
+          )}
           <div className="flex gap-4">
             <button
-              onClick={() => this.setState({ hasError: false })}
+              onClick={() => this.setState({ hasError: false, message: '' })}
               className="rounded-2xl bg-[#6ee7a8] px-8 py-4 font-black uppercase text-[#170d24]"
             >
               Try Again
@@ -36,7 +40,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
             {this.props.onClose && (
               <button
                 onClick={() => {
-                  this.setState({ hasError: false })
+                  this.setState({ hasError: false, message: '' })
                   this.props.onClose?.()
                 }}
                 className="rounded-2xl border border-white/20 bg-white/10 px-8 py-4 font-black uppercase text-white"
