@@ -1,0 +1,296 @@
+@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@400;600;700;800&display=swap');
+@import 'tailwindcss';
+
+:root {
+  --bg-0: #1a0d2e;
+  --bg-1: #2d1245;
+  --bg-2: #4a1a52;
+  --gold: #ffcf4d;
+  --gold-deep: #f5a623;
+
+  --r-free: #6ee7a8;
+  --r-common: #8ec5ff;
+  --r-rare: #b98bff;
+  --r-epic: #ff7ad9;
+  --r-legendary: #ffd24d;
+  --r-mythic: #ff5fa8;
+}
+
+@theme inline {
+  --font-display: 'Fredoka', system-ui, sans-serif;
+  --font-body: 'Nunito', system-ui, sans-serif;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: 'Nunito', system-ui, sans-serif;
+  color: #fff5ff;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-display {
+  font-family: 'Fredoka', system-ui, sans-serif;
+}
+
+/* Gentle flappy float — characters bob and tilt like they're mid-flight */
+@keyframes float-bob {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-4deg);
+  }
+  50% {
+    transform: translateY(-9px) rotate(4deg);
+  }
+}
+.float-bob {
+  animation: float-bob 2.6s ease-in-out infinite;
+}
+
+@keyframes float-slow {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+.float-slow {
+  animation: float-slow 3.4s ease-in-out infinite;
+}
+
+@keyframes shine-sweep {
+  0% {
+    transform: translateX(-120%) skewX(-18deg);
+  }
+  60%,
+  100% {
+    transform: translateX(320%) skewX(-18deg);
+  }
+}
+
+@keyframes confetti-fall {
+  0% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(560px) rotate(540deg);
+    opacity: 0;
+  }
+}
+
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 0.15;
+    transform: scale(0.7);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+}
+.twinkle {
+  animation: twinkle 3s ease-in-out infinite;
+}
+
+/* --- Gameplay juice --------------------------------------------------- */
+
+/* Parallax depth layers drifting left */
+@keyframes parallax-drift {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.parallax-drift-slow { animation: parallax-drift 26s linear infinite; }
+.parallax-drift-fast { animation: parallax-drift 14s linear infinite; }
+
+/* Impact screen shake on death */
+@keyframes screen-shake {
+  0%, 100% { transform: translate(0, 0); }
+  15% { transform: translate(-8px, 5px) rotate(-0.6deg); }
+  30% { transform: translate(7px, -6px) rotate(0.5deg); }
+  45% { transform: translate(-6px, 4px) rotate(-0.4deg); }
+  60% { transform: translate(5px, -3px); }
+  80% { transform: translate(-3px, 2px); }
+}
+.screen-shake { animation: screen-shake 0.42s ease-in-out; }
+
+/* Ghost tumbling to the floor before the Game Over panel */
+@keyframes death-fall {
+  0% { transform: translate(-50%, -50%) rotate(0deg); opacity: 1; }
+  100% { transform: translate(-50%, 480px) rotate(560deg); opacity: 0.5; }
+}
+.death-fall { animation: death-fall 0.72s cubic-bezier(0.4, 0, 0.9, 0.5) forwards; }
+
+/* Floating "+1" coin pickup */
+@keyframes coin-pop {
+  0% { transform: translate(-50%, -50%) scale(0.6); opacity: 0; }
+  25% { transform: translate(-50%, -90%) scale(1.15); opacity: 1; }
+  100% { transform: translate(-50%, -220%) scale(1); opacity: 0; }
+}
+.coin-pop { animation: coin-pop 0.7s ease-out forwards; }
+
+/* Coin counter bounce + glow when a coin is collected */
+@keyframes coin-hud-pop {
+  0% { transform: scale(1); box-shadow: 0 0 0 rgba(255, 207, 77, 0); }
+  35% { transform: scale(1.18); box-shadow: 0 0 22px rgba(255, 207, 77, 0.75); }
+  100% { transform: scale(1); box-shadow: 0 0 0 rgba(255, 207, 77, 0); }
+}
+.coin-hud-pop { animation: coin-hud-pop 0.4s ease-out; }
+
+/* Countdown number punch */
+@keyframes countdown-pop {
+  0% { transform: scale(0.3); opacity: 0; }
+  40% { transform: scale(1.15); opacity: 1; }
+  75% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.9); opacity: 0.85; }
+}
+.countdown-pop { animation: countdown-pop 0.7s ease-out; display: inline-block; }
+
+/* --- Mythic gift unboxing (lottery reveal) ----------------------------- */
+
+@keyframes gift-sparkle {
+  0%, 100% { opacity: 0.25; transform: scale(0.7); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+.gift-sparkle { animation: gift-sparkle 1.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.gift-drop-glow { filter: drop-shadow(0 0 10px rgba(255, 215, 0, 0.9)) drop-shadow(0 0 22px rgba(233, 30, 99, 0.55)); }
+
+@keyframes gift-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-14px); }
+}
+.gift-float { animation: gift-float 2.4s ease-in-out infinite; }
+
+@keyframes gift-glow {
+  0%, 100% { box-shadow: 0 0 16px 6px rgba(255, 215, 0, 0.28), 0 0 40px 14px rgba(255, 215, 0, 0.14); }
+  50% { box-shadow: 0 0 28px 14px rgba(255, 215, 0, 0.7), 0 0 70px 26px rgba(255, 215, 0, 0.38); }
+}
+.gift-glow { animation: gift-glow 1.8s ease-in-out infinite; }
+.gift-idle { animation: gift-float 2.4s ease-in-out infinite, gift-glow 1.8s ease-in-out infinite; }
+
+@keyframes gift-shake-build {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  10% { transform: translate(-5px, 1px) rotate(-5deg); }
+  20% { transform: translate(6px, -2px) rotate(6deg); }
+  32% { transform: translate(-9px, 2px) rotate(-9deg); }
+  44% { transform: translate(11px, -3px) rotate(11deg); }
+  56% { transform: translate(-14px, 3px) rotate(-13deg); }
+  68% { transform: translate(16px, -4px) rotate(15deg); }
+  80% { transform: translate(-18px, 5px) rotate(-17deg); }
+  90% { transform: translate(14px, -3px) rotate(12deg); }
+  100% { transform: translate(0, 0) rotate(0deg) scale(1.08); }
+}
+.gift-shake-build { animation: gift-shake-build 1.5s ease-in forwards; }
+
+@keyframes gift-aura {
+  0% { transform: scale(0.55); opacity: 0.15; }
+  100% { transform: scale(2.7); opacity: 0.85; }
+}
+.gift-aura { animation: gift-aura 1.5s ease-out forwards; }
+
+@keyframes unbox-flash {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.unbox-flash { animation: unbox-flash 0.2s ease-out forwards; }
+
+@keyframes confetti-burst {
+  0% { transform: translate(0, 0) scale(1) rotate(0deg); opacity: 1; }
+  100% { transform: translate(var(--dx), var(--dy)) scale(0.35) rotate(var(--rot)); opacity: 0; }
+}
+.confetti-burst {
+  left: 50%;
+  top: 50%;
+  animation: confetti-burst 0.9s ease-out forwards;
+}
+
+@keyframes mythic-reveal {
+  0% { transform: scale(0.5); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.mythic-reveal { animation: mythic-reveal 0.7s cubic-bezier(0.175, 0.885, 0.32, 1.275) both; }
+
+@keyframes holo-sweep {
+  0% { transform: translateX(-140%) skewX(-18deg); }
+  100% { transform: translateX(230%) skewX(-18deg); }
+}
+.holo-sweep {
+  background: linear-gradient(115deg, transparent 28%, rgba(255, 255, 255, 0.5) 46%, rgba(255, 215, 0, 0.4) 54%, transparent 72%);
+  animation: holo-sweep 3s ease-in-out infinite;
+}
+
+/* Chest rattling before it pops open */
+@keyframes chest-shake {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  20% { transform: translate(-5px, 0) rotate(-5deg); }
+  40% { transform: translate(5px, -2px) rotate(5deg); }
+  60% { transform: translate(-4px, 0) rotate(-4deg); }
+  80% { transform: translate(4px, -1px) rotate(3deg); }
+}
+.chest-shake { animation: chest-shake 0.34s ease-in-out infinite; }
+
+/* Golden flash the moment the lid flies open */
+@keyframes chest-burst {
+  0% { transform: scale(0.2); opacity: 0.85; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
+.chest-burst { animation: chest-burst 0.6s ease-out forwards; }
+
+/* Character card springing out of the chest */
+@keyframes card-reveal {
+  0% { transform: translateY(26px) scale(0.5) rotate(-10deg); opacity: 0; }
+  55% { transform: translateY(-8px) scale(1.07) rotate(3deg); opacity: 1; }
+  100% { transform: translateY(0) scale(1) rotate(0deg); opacity: 1; }
+}
+.card-reveal { animation: card-reveal 0.55s cubic-bezier(0.2, 1.4, 0.4, 1) both; }
+
+/* Game Over panel slide-in */
+@keyframes game-over-slide {
+  0% { transform: translateY(28px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+.game-over-slide { animation: game-over-slide 0.35s ease-out 0.1s both; }
+
+/* Scrollbar hidden until scroll */
+* {
+  scrollbar-width: none;
+}
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* Accessibility: honor users who prefer reduced motion (menu decorations only). */
+@media (prefers-reduced-motion: reduce) {
+  .float-bob,
+  .float-slow,
+  .twinkle,
+  .animate-pulse,
+  .parallax-drift-slow,
+  .parallax-drift-fast,
+  .screen-shake,
+  .coin-pop,
+  .coin-hud-pop,
+  .countdown-pop,
+  .chest-shake,
+  .chest-burst,
+  .card-reveal,
+  .gift-sparkle,
+  .gift-idle,
+  .gift-shake-build,
+  .gift-aura,
+  .unbox-flash,
+  .confetti-burst,
+  .mythic-reveal,
+  .holo-sweep {
+    animation: none !important;
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "description": "Explore a whimsical universe of original characters and obstacles for a Flappy Bird-style game, offering unique designs and engaging gameplay for all ages.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

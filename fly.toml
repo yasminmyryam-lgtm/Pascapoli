@@ -1,0 +1,48 @@
+
+# Fly.io configuration for the authoritative game server (Phase 3).
+#
+# IMPORTANT — single instance on purpose.
+# Colyseus keeps room state in memory. Two machines would each hold their own
+# rooms, so a player could join a room code that lives on the other machine.
+# Horizontal scaling requires Redis presence/driver first; until then this app
+# must run exactly one machine.
+#
+# Nothing is deployed in Phase 1. This file exists so Phase 3 deploys instead
+# of being retrofitted.
+
+app = "pastapoli-game"
+primary_region = "fra"
+
+[build]
+  dockerfile = "server/Dockerfile"
+
+[env]
+  PORT = "8443"
+  NODE_ENV = "production"
+
+[http_service]
+  internal_port = 8443
+  force_https = true
+  # A browser on an HTTPS page cannot open ws:// — TLS termination here is what
+  # makes wss:// work from the deployed frontend.
+  auto_stop_machines = false
+  auto_start_machines = true
+  # Room state is in memory: never scale below or above one machine.
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    path = "/health"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+# Secrets are NOT stored here. Set them out of band:
+#   fly secrets set SUPABASE_URL=... \
+#                   SUPABASE_SERVICE_ROLE_KEY=... \
+#                   SUPABASE_JWT_SECRET=... \
+#                   ALLOWED_ORIGINS=https://your-frontend

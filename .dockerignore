@@ -1,0 +1,16 @@
+node_modules
+dist
+build
+.cache
+.vite
+.git
+.env
+.env.*
+!.env.example
+src
+public
+index.html
+preview.html
+.figma
+*.log
+logs
