@@ -15,8 +15,12 @@ function optional(value: string | undefined, fallback = ''): string {
   return trimmed || fallback
 }
 
-const supabaseUrl = optional(import.meta.env.VITE_SUPABASE_URL)
-const supabaseAnonKey = optional(import.meta.env.VITE_SUPABASE_ANON_KEY)
+/** Publishable production defaults so a Render build still boots if Vite env is empty. */
+const DEFAULT_SUPABASE_URL = 'https://qnwilkzfeiuscdtvextu.supabase.co'
+const DEFAULT_SUPABASE_ANON_KEY = 'sb_publishable_HxVUmMWCJb--auQ6xqYCLg_LUGis_gu'
+
+const supabaseUrl = optional(import.meta.env.VITE_SUPABASE_URL, DEFAULT_SUPABASE_URL)
+const supabaseAnonKey = optional(import.meta.env.VITE_SUPABASE_ANON_KEY, DEFAULT_SUPABASE_ANON_KEY)
 
 export const env = {
   supabaseUrl,

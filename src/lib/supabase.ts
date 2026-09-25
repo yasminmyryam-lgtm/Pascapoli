@@ -12,11 +12,11 @@ import { env } from './env'
  * substitute for trusted server logic, so competitive writes (coins, XP, match
  * results) go through the game server's service-role client instead.
  *
- * When env vars are missing we still construct a client with inert placeholders
- * so `createClient` never throws during module init and the UI can render.
+ * URL and anon key come from `env`, which already falls back to the
+ * production publishable defaults when Vite did not inline them.
  */
-const url = env.isConfigured ? env.supabaseUrl : 'https://unavailable.supabase.co'
-const key = env.isConfigured ? env.supabaseAnonKey : 'public-anon-key-unavailable'
+const url = env.supabaseUrl || 'https://qnwilkzfeiuscdtvextu.supabase.co'
+const key = env.supabaseAnonKey || 'sb_publishable_HxVUmMWCJb--auQ6xqYCLg_LUGis_gu'
 
 export const supabase: SupabaseClient = createClient(url, key, {
   auth: {
