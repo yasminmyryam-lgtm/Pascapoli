@@ -191,15 +191,30 @@ export function onAuthStateChange(
  * boolean, no distinct error, no different latency path. That is what stops
  * this endpoint from becoming an account-existence oracle.
  */
+function providerErrorMessage(error: unknown): string {
+  if (error && typeof error === 'object') {
+    const rec = error as { error_description?: unknown; message?: unknown }
+    if (typeof rec.error_description === 'string' && rec.error_description.trim()) return rec.error_description
+    if (typeof rec.message === 'string' && rec.message.trim()) return rec.message
+  }
+  if (typeof error === 'string' && error.trim()) return error
+  return 'Error sending recovery email'
+}
+
 export async function requestPasswordReset(emailInput: string): Promise<void> {
   requireConfigured()
   const email = parse(emailSchema, emailInput)
 
   try {
     const { error } = await supabase.auth.resetPasswordForEmail(email)
-    if (error) throw error
+    if (error) {
+      console.error('[auth] resetPasswordForEmail failed:', error)
+      throw new AuthError('UNKNOWN', providerErrorMessage(error))
+    }
   } catch (cause) {
-    throw toAuthError(cause)
+    console.error('[auth] resetPasswordForEmail failed:', cause)
+    if (cause instanceof AuthError) throw cause
+    throw new AuthError('UNKNOWN', providerErrorMessage(cause))
   }
 }
 

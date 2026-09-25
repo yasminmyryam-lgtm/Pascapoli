@@ -90,14 +90,31 @@ export default function Auth() {
 
   const handleForgot = (e: React.FormEvent) => {
     e.preventDefault()
-    void run(async () => {
-      await requestPasswordReset(email)
-      setMode('otp')
-      setCode('')
-      setPassword('')
-      setConfirmPassword('')
-      setInfo('Enter the code we sent to your email.')
-    })
+    setErrorMsg('')
+    setErrorCode(null)
+    setInfo('')
+    setIsLoading(true)
+    void (async () => {
+      try {
+        await requestPasswordReset(email)
+        setMode('otp')
+        setCode('')
+        setPassword('')
+        setConfirmPassword('')
+        setInfo('Enter the code we sent to your email.')
+      } catch (cause) {
+        console.error('[auth] resetPasswordForEmail failed:', cause)
+        const rec = cause && typeof cause === 'object' ? (cause as { error_description?: unknown; message?: unknown }) : null
+        const message =
+          (typeof rec?.error_description === 'string' && rec.error_description) ||
+          (typeof rec?.message === 'string' && rec.message) ||
+          describeError(cause)
+        setErrorMsg(message)
+        setErrorCode('UNKNOWN')
+      } finally {
+        setIsLoading(false)
+      }
+    })()
   }
 
   const handleOtpReset = (e: React.FormEvent) => {
