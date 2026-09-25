@@ -96,7 +96,7 @@ export default function Auth() {
     setIsLoading(true)
     void (async () => {
       try {
-        await requestPasswordReset(email)
+        await requestPasswordReset(email.trim())
         setMode('otp')
         setCode('')
         setPassword('')

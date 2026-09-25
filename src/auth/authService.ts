@@ -203,10 +203,12 @@ function providerErrorMessage(error: unknown): string {
 
 export async function requestPasswordReset(emailInput: string): Promise<void> {
   requireConfigured()
-  const email = parse(emailSchema, emailInput)
+  const email = parse(emailSchema, emailInput.trim())
 
   try {
-    const { error } = await supabase.auth.resetPasswordForEmail(email)
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: typeof window !== 'undefined' ? window.location.origin : env.publicBaseUrl,
+    })
     if (error) {
       console.error('[auth] resetPasswordForEmail failed:', error)
       throw new AuthError('UNKNOWN', providerErrorMessage(error))
