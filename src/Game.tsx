@@ -9,7 +9,7 @@ import { playRewardedAdSequence } from './ads/adService'
 import { authorizeDouble, chargeReviveDiamonds, isAdRevive } from './economy/economyApi'
 import ReviveOffer from './economy/ReviveOffer'
 import { creditRelaySender } from './economy/economyApi'
-import { buildRelayUrl, newRelayId, type RelayRun } from './relay'
+import { buildRelayUrl, chainPlayedIds, newRelayId, type RelayRun } from './relay'
 
 const GAME_WIDTH = 960
 const GAME_HEIGHT = 620
@@ -255,6 +255,8 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
   const [sharing, setSharing] = useState(false)
   const [shareMsg, setShareMsg] = useState<string | null>(null)
   const [relayToast, setRelayToast] = useState<string | null>(null)
+  const [relayHold, setRelayHold] = useState(Boolean(relay))
+  const relayHoldRef = useRef(Boolean(relay))
   const [coinPulse, setCoinPulse] = useState(0)   // bumps to retrigger the HUD bounce
   const [chestPulse, setChestPulse] = useState(0) // same, for the chest counter
   const [offerRevive, setOfferRevive] = useState(false)
@@ -445,6 +447,10 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
   // --- INPUT ---
   const dispatchJumpAction = useCallback(() => {
     if (phase === 'over' || phase === 'unboxing' || offerRevive || pausedRef.current) return
+    if (relayHoldRef.current) {
+      relayHoldRef.current = false
+      setRelayHold(false)
+    }
     haptic(8); sfx.flap()
     if (guest) { send({ opCode: 'FLAP' }); return }   // guest only sends intent
     p1Vel.current = PHYSICS.FLAP_POWER * metricsRef.current.scale
@@ -545,7 +551,7 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
       if (pausedRef.current) { lastTimeRef.current = now; animationFrameId.current = requestAnimationFrame(tick); return }
 
       // Hold the world still until the co-op 3-2-1-GO countdown finishes.
-      if (countdownRef.current) { lastTimeRef.current = now; animationFrameId.current = requestAnimationFrame(tick); return }
+      if (countdownRef.current || relayHoldRef.current) { lastTimeRef.current = now; animationFrameId.current = requestAnimationFrame(tick); return }
 
       // Freeze after a death so the revive overlay can resume this same world.
       if (dyingRef.current) { lastTimeRef.current = now; animationFrameId.current = requestAnimationFrame(tick); return }
@@ -754,6 +760,7 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
     const url = buildRelayUrl({
       relayId: newRelayId(),
       senderId,
+      playedIds: chainPlayedIds(relay, senderId),
       charId: p1CharData.id,
       themeId: activeEnvironment.id,
       startScore: finalRef.current.score,
@@ -902,6 +909,12 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
           </div>
         )}
 
+        {relayHold && phase === 'playing' && !offerRevive && (
+          <div className="absolute inset-0 z-[94] flex items-center justify-center bg-black/40 pointer-events-none">
+            <p className="text-4xl sm:text-6xl font-black text-white text-center drop-shadow-xl px-6">Continue the game</p>
+          </div>
+        )}
+
         {paused && phase === 'playing' && !offerRevive && (
           <div className="absolute inset-0 flex items-center justify-center z-[95] bg-black/70 backdrop-blur-sm">
             <p className="text-5xl font-black text-white">⏸ PAUSED</p>
@@ -951,8 +964,14 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
               <p className="text-[#8ec5ff] text-sm font-bold mt-2">+{summary?.xpGained ?? 0} XP</p>
             </div>
             <div className="flex gap-4 w-full max-w-xl">
-              <button onClick={onReplay} className="flex-1 rounded-[32px] bg-[#6ee7a8] py-5 text-xl font-black uppercase text-[#170d24] shadow-lg">REPLAY</button>
-              <button onClick={onClose} className="flex-1 rounded-[32px] bg-white/10 py-5 text-xl font-black uppercase text-white border border-white/20">MENU</button>
+              {relay ? (
+                <button onClick={onClose} className="flex-1 rounded-[32px] bg-[#6ee7a8] py-5 text-xl font-black uppercase text-[#170d24] shadow-lg">Main Menu</button>
+              ) : (
+                <>
+                  <button onClick={onReplay} className="flex-1 rounded-[32px] bg-[#6ee7a8] py-5 text-xl font-black uppercase text-[#170d24] shadow-lg">REPLAY</button>
+                  <button onClick={onClose} className="flex-1 rounded-[32px] bg-white/10 py-5 text-xl font-black uppercase text-white border border-white/20">MENU</button>
+                </>
+              )}
             </div>
             {!isCoop && (
               <button onClick={() => { void shareRelayRun() }} className="mt-4 w-full max-w-xl rounded-[28px] bg-[#ffd24d] py-4 text-lg font-black uppercase text-[#170d24] shadow-lg">

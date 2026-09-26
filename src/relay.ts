@@ -5,6 +5,36 @@ export type RelayRun = {
   themeId: string
   startScore: number
   startCoins: number
+  playedIds: string[]
+}
+
+const ID_OK = /^[A-Za-z0-9_-]{1,80}$/
+
+export function normalizeIds(ids: string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of ids) {
+    const id = raw.trim()
+    if (!ID_OK.test(id) || seen.has(id)) continue
+    seen.add(id)
+    out.push(id)
+    if (out.length >= 40) break
+  }
+  return out
+}
+
+/** True when this account already flew this chain, including the current sender. */
+export function relayBlocks(run: RelayRun, userId: string): boolean {
+  return run.senderId === userId || run.playedIds.includes(userId)
+}
+
+/** Ids stamped onto the next link: everyone so far, plus the player sharing now. */
+export function chainPlayedIds(previous: RelayRun | null, nextSenderId: string): string[] {
+  return normalizeIds([
+    ...(previous?.playedIds ?? []),
+    ...(previous ? [previous.senderId] : []),
+    nextSenderId,
+  ])
 }
 
 function nonNegInt(value: string | null, max: number) {
@@ -29,6 +59,7 @@ export function parseRelay(search: string): RelayRun | null {
     themeId,
     startScore: nonNegInt(params.get('startScore'), 99_999),
     startCoins: nonNegInt(params.get('startCoins'), 99_999),
+    playedIds: normalizeIds((params.get('playedIds') ?? '').split(',')),
   }
 }
 
@@ -41,6 +72,7 @@ export function buildRelayUrl(run: RelayRun): string {
   url.searchParams.set('theme', run.themeId)
   url.searchParams.set('startScore', String(run.startScore))
   url.searchParams.set('startCoins', String(run.startCoins))
+  url.searchParams.set('playedIds', run.playedIds.join(','))
   return url.toString()
 }
 

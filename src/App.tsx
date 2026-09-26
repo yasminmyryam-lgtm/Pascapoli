@@ -21,7 +21,7 @@ import { disableGuestPlay, useGuestPlay } from './auth/guestPlay'
 import { useProfile } from './profile/useProfile'
 import { CREDENTIAL_RULES } from './lib/validation'
 import { claimRelayRewards, syncWallet } from './economy/economyApi'
-import { parseRelay, type RelayRun } from './relay'
+import { parseRelay, relayBlocks, type RelayRun } from './relay'
 
 export type { CoopConfig }
 
@@ -136,6 +136,7 @@ export default function App() {
 
   const [relayOffer] = useState<RelayRun | null>(() => parseRelay(window.location.search))
   const [activeRelay, setActiveRelay] = useState<RelayRun | null>(null)
+  const relayHandled = useRef(false)
   const [activeEngineMode, setActiveEngineMode] = useState<'NORMAL' | 'CHALLENGE' | 'COOP'>('NORMAL')
   const [gameSessionId, setGameSessionId] = useState(Date.now()) 
   const [isGameEngineMounted, setIsGameEngineMounted] = useState(false)
@@ -207,13 +208,23 @@ export default function App() {
     setActiveEngineMode(mode); setGameSessionId(Date.now()); setIsGameEngineMounted(true)
   }
 
-  const startRelay = () => {
-    if (!relayOffer) return
+  // A relay link skips the menu once the account is known. The URL is cleared
+  // immediately so a refresh cannot replay the same handoff.
+  useEffect(() => {
+    if (!relayOffer || relayHandled.current) return
+    if (sessionStatus !== 'AUTHENTICATED' || !userId || isRecoveringPassword) return
+    relayHandled.current = true
+    if (relayBlocks(relayOffer, userId)) {
+      window.history.replaceState({}, document.title, '/')
+      window.alert('You have already participated in this relay chain! Send it to someone new.')
+      return
+    }
     setActiveRelay(relayOffer)
     setActiveEngineMode('NORMAL')
     setGameSessionId(Date.now())
     setIsGameEngineMounted(true)
-  }
+    window.history.replaceState({}, document.title, '/')
+  }, [relayOffer, sessionStatus, userId, isRecoveringPassword])
 
   // --- REȚEA PEERJS ---
   const initializeHostServer = () => {
@@ -319,8 +330,17 @@ export default function App() {
   if (isRecoveringPassword) return <Auth />
   if (sessionStatus === 'ANONYMOUS' && !isGuestPlay) return <Auth />
 
+  const enteringRelay = Boolean(
+    relayOffer && sessionStatus === 'AUTHENTICATED' && userId && !relayBlocks(relayOffer, userId) && !activeRelay && !relayHandled.current,
+  )
+
   return (
     <main className="min-h-screen w-full bg-[#1b1429] font-display pb-32" style={{ background: 'radial-gradient(150% 100% at 50% 0%, #2f1d4a 0%, #11091c 100%)' }}>
+      {enteringRelay && (
+        <div className="fixed inset-0 z-[1100] grid place-items-center bg-[#11091c]">
+          <p className="text-4xl font-black text-white">Continue the game</p>
+        </div>
+      )}
       <header className="w-full sticky top-0 z-40 bg-[#1b1429]/80 backdrop-blur-md border-b border-white/5 shadow-md">
         <div className="max-w-7xl mx-auto p-4 flex justify-between items-center">
           <div><h1 className="text-2xl font-black text-white">{headerTitle}</h1></div>
@@ -372,17 +392,8 @@ export default function App() {
               </div>
               {viewMode === '3D' && <span className="text-white/40 text-[11px] font-bold">First-person · swipe to look</span>}
             </div>
-            {relayOffer && (
-              <p className="mb-3 text-center text-sm font-bold text-[#ffd24d] lg:text-left">
-                A friend sent their run. Continue from score {relayOffer.startScore} with their character and theme.
-              </p>
-            )}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 w-full">
-              {relayOffer ? (
-                <button onClick={startRelay} className="bg-[#ffd24d] text-[#170d24] py-4 rounded-2xl font-black uppercase">▶ Continue</button>
-              ) : (
-                <button onClick={() => handleGameLaunch('NORMAL')} className="bg-[#6ee7a8] text-[#170d24] py-4 rounded-2xl font-black uppercase">▶ Solo</button>
-              )}
+              <button onClick={() => handleGameLaunch('NORMAL')} className="bg-[#6ee7a8] text-[#170d24] py-4 rounded-2xl font-black uppercase">▶ Solo</button>
               <button onClick={() => setCustomizeId(activeChar.id)} className="bg-[#412e61] text-white py-4 rounded-2xl font-black uppercase">👕 Custom</button>
               <button onClick={() => setShowChallengePopup(true)} className="bg-[#ff7ad9] text-[#170d24] py-4 rounded-2xl font-black uppercase">🔥 Hard</button>
               <button onClick={() => { setNetworkRole(null); setCoopConfig(prev => ({ ...prev, p1Char: selected, p2Char: selected })); setShowNetworkLobby(true); }} className="bg-[#8ec5ff] text-[#170d24] py-4 rounded-2xl font-black uppercase">🤝 Co-op</button>
