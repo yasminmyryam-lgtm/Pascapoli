@@ -49,6 +49,10 @@ export type GameReward = { totalReward: number; xpGained: number; isNewBest: boo
  * authoritative for progression.
  */
 const KEY = 'pastapoli.save.v4'
+export const STARTING_COINS = 100
+export const STARTING_DIAMONDS = 10
+const LEGACY_STARTING_COINS = 500
+const LEGACY_STARTING_DIAMONDS = 50
 
 function getTodayStr() { return new Date().toISOString().split('T')[0] }
 function getYesterdayStr() { 
@@ -57,7 +61,7 @@ function getYesterdayStr() {
 }
 
 const DEFAULT_STATE: GameState = {
-  coins: 100, diamonds: 10, xp: 0, best: 0, totalGames: 0,
+  coins: STARTING_COINS, diamonds: STARTING_DIAMONDS, xp: 0, best: 0, totalGames: 0,
   owned: ['mozzarella'], ownedObstacles: ['woodo'],
   selected: 'mozzarella', obstacle: 'woodo', lastSpin: 0,
   cosmetics: [], equipped: {}, cards: {},
@@ -175,14 +179,28 @@ function parseAndValidateState(): GameState {
     }
 
     const owned = sanitizeOwned(parsed.owned)
+    let coins = clampNum(parsed.coins, 9_999_999)
+    let diamonds = clampNum(parsed.diamonds, 999_999)
+    const xp = clampNum(parsed.xp, 99_999_999)
+    const best = clampNum(parsed.best, 99_999)
+    const totalGames = clampNum(parsed.totalGames, 9_999_999)
+    // Unused starter slots still holding the old 500/50 grant get the new 100/10.
+    // Saves with any play or spend are left alone.
+    if (
+      totalGames === 0 && xp === 0 && best === 0 &&
+      coins === LEGACY_STARTING_COINS && diamonds === LEGACY_STARTING_DIAMONDS
+    ) {
+      coins = STARTING_COINS
+      diamonds = STARTING_DIAMONDS
+    }
     return {
       ...DEFAULT_STATE,
       ...parsed,
-      coins: clampNum(parsed.coins, 9_999_999),
-      diamonds: clampNum(parsed.diamonds, 999_999),
-      xp: clampNum(parsed.xp, 99_999_999),
-      best: clampNum(parsed.best, 99_999),
-      totalGames: clampNum(parsed.totalGames, 9_999_999),
+      coins,
+      diamonds,
+      xp,
+      best,
+      totalGames,
       lastSpin: clampNum(parsed.lastSpin, Date.now() + 1),
       owned,
       selected: sanitizeSelected(parsed.selected, owned),

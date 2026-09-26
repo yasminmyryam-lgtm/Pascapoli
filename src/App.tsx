@@ -510,8 +510,8 @@ export default function App() {
           <div className="bg-[#2a1c42] p-8 rounded-[40px] w-full max-w-sm text-center">
             <h3 className="text-3xl font-black text-white mb-2">Hard Mode</h3>
             <p className="text-white/60 mb-6 text-sm font-bold">Coins x10. Unpredictable obstacles.</p>
-            <div className="mb-6 font-black text-[#ffe6a3] text-xl bg-black/40 py-4 rounded-3xl">ENTRY FEE: 250 🪙</div>
-            <button onClick={() => { if (coins >= 250) { addCoins(-250); setShowChallengePopup(false); handleGameLaunch('CHALLENGE'); } }} disabled={coins < 250} className={`w-full py-5 rounded-2xl font-black uppercase text-lg ${coins >= 250 ? 'bg-[#ff7ad9] text-[#170d24]' : 'bg-white/10 text-white/30'}`}>Enter Arena</button>
+            <div className="mb-6 font-black text-[#ffe6a3] text-xl bg-black/40 py-4 rounded-3xl">ENTRY FEE: 100 🪙</div>
+            <button onClick={() => { if (coins >= 100) { addCoins(-100); setShowChallengePopup(false); handleGameLaunch('CHALLENGE'); } }} disabled={coins < 100} className={`w-full py-5 rounded-2xl font-black uppercase text-lg ${coins >= 100 ? 'bg-[#ff7ad9] text-[#170d24]' : 'bg-white/10 text-white/30'}`}>Enter Arena</button>
             <button onClick={() => setShowChallengePopup(false)} className="w-full mt-6 text-white/40 font-bold uppercase">Cancel</button>
           </div>
         </div>

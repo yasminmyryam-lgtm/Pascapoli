@@ -127,9 +127,16 @@ function spawnPipe(world: World3, z: number, gapY?: number) {
   const mid = gapY ?? W3.FLOOR + 1.4 + world.rng() * (W3.CEILING - W3.FLOOR - 2.8)
   world.spawned += 1
   world.pipes.push({ z, gapY: mid, gap, scored: false, n: world.spawned })
-  world.coins.push({ z: z - W3.PIPE_SPACING * 0.4, y: mid, taken: false })
+  const coinZ = z - W3.PIPE_SPACING * 0.4
   if (world.mode === 'CHALLENGE') {
-    world.coins.push({ z: z - W3.PIPE_SPACING * 0.4 - 1.1, y: mid + 0.65, taken: false })
+    const inner = gap * 0.62
+    const startY = mid - inner / 2
+    const stepY = inner / 3
+    for (let i = 0; i < 4; i++) {
+      world.coins.push({ z: coinZ - i * 0.28, y: startY + i * stepY, taken: false })
+    }
+  } else {
+    world.coins.push({ z: coinZ, y: mid, taken: false })
   }
   if (world.nextChest === 0) {
     world.nextChest = W3.CHEST_MIN + Math.floor(world.rng() * (W3.CHEST_MAX - W3.CHEST_MIN + 1))

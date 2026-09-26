@@ -568,7 +568,17 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
         worldPipes.current.push({ x: u.w + u.pipeW, gapCenterY, gap, hasPassedScores: false })
         const cx = u.w + u.pipeW + u.spacing / 2
         if (mode === 'CHALLENGE') {
-          worldCoins.current.push({ x: cx, y: gapCenterY, looted1: false, looted2: false }, { x: cx + u.coinSpreadX, y: gapCenterY - u.coinSpreadY, looted1: false, looted2: false })
+          const inner = gap * 0.62
+          const startY = gapCenterY - inner / 2
+          const stepY = inner / 3
+          for (let i = 0; i < 4; i++) {
+            worldCoins.current.push({
+              x: cx + (i % 2) * u.coinSpreadX * 0.35,
+              y: startY + i * stepY,
+              looted1: false,
+              looted2: false,
+            })
+          }
         } else {
           worldCoins.current.push({ x: cx, y: gapCenterY, looted1: false, looted2: false })
         }
