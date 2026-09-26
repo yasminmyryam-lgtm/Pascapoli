@@ -80,7 +80,7 @@ function HScroll({ children, className = '' }: { children: React.ReactNode; clas
   }
 
   return (
-    <div className="relative">
+    <div className="relative w-full min-w-0">
       <button
         type="button"
         aria-label="Scroll left"
@@ -91,7 +91,7 @@ function HScroll({ children, className = '' }: { children: React.ReactNode; clas
       </button>
       <div
         ref={scrollerRef}
-        className={`flex overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${className}`}
+        className={`flex w-full min-w-0 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${className}`}
         style={{ touchAction: 'pan-x', WebkitOverflowScrolling: 'touch' }}
       >
         {children}
@@ -377,21 +377,21 @@ export default function App() {
   }
 
   return (
-    <main className="min-h-screen w-full bg-[#1b1429] font-display pb-32" style={{ background: 'radial-gradient(150% 100% at 50% 0%, #2f1d4a 0%, #11091c 100%)' }}>
-      <header className="w-full sticky top-0 z-40 bg-[#1b1429]/80 backdrop-blur-md border-b border-white/5 shadow-md">
-        <div className="max-w-7xl mx-auto p-4 flex justify-between items-center">
-          <div><h1 className="text-2xl font-black text-white">{headerTitle}</h1></div>
-          <div className="flex gap-2 items-center">
-            <button onClick={() => setShowWheel(true)} className="relative w-12 h-12 bg-white/5 rounded-full text-xl text-white flex items-center justify-center">
+    <main className="min-h-screen w-full max-w-full overflow-x-clip bg-[#1b1429] font-display pb-32" style={{ background: 'radial-gradient(150% 100% at 50% 0%, #2f1d4a 0%, #11091c 100%)' }}>
+      <header className="sticky top-0 z-50 w-full border-b border-white/5 bg-[#1b1429]/95 shadow-md backdrop-blur-md">
+        <div className="mx-auto flex w-full max-w-7xl items-center justify-end gap-2 px-3 py-2 md:justify-between md:p-4">
+          <h1 className="hidden text-2xl font-black text-white md:block">{headerTitle}</h1>
+          <div className="flex min-w-0 items-center gap-1.5 md:gap-2">
+            <button onClick={() => setShowWheel(true)} className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/5 text-lg text-white md:h-12 md:w-12 md:text-xl">
               🎡 {wheelReady && <span className="absolute top-0 right-0 w-3 h-3 bg-[#6ee7a8] rounded-full"></span>}
             </button>
-            <div className="bg-[#170d24] px-5 py-3 rounded-full font-black text-[#ffe6a3] flex gap-3">
-              <span>🪙 {coins}</span>
-              <span className="text-[#8ec5ff]">💎 {diamonds}</span>
-              <span className="text-[#ff9f43]" title="Daily streak">🔥 {streak.count}</span>
+            <div className="flex min-w-0 items-center gap-2 rounded-full bg-[#170d24] px-3 py-2 text-sm font-black text-[#ffe6a3] md:gap-3 md:px-5 md:py-3 md:text-base">
+              <span className="truncate">🪙 {coins}</span>
+              <span className="shrink-0 text-[#8ec5ff]">💎 {diamonds}</span>
+              <span className="shrink-0 text-[#ff9f43]" title="Daily streak">🔥 {streak.count}</span>
             </div>
-            <button onClick={() => setShowChat(true)} aria-label="Chat" className="w-12 h-12 bg-white/5 rounded-full text-xl text-white flex items-center justify-center">💬</button>
-            <button onClick={() => setShowSettings(true)} aria-label="Account & Settings" className="w-12 h-12 bg-white/5 rounded-full text-xl text-white flex items-center justify-center">⚙️</button>
+            <button onClick={() => setShowChat(true)} aria-label="Chat" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/5 text-lg text-white md:h-12 md:w-12 md:text-xl">💬</button>
+            <button onClick={() => setShowSettings(true)} aria-label="Account & Settings" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/5 text-lg text-white md:h-12 md:w-12 md:text-xl">⚙️</button>
           </div>
         </div>
       </header>
@@ -444,7 +444,7 @@ export default function App() {
       {/* Character collection — main has pb-32 so scrolling works cleanly */}
       <section ref={charSectionRef} className="max-w-7xl mx-auto mt-12 px-4">
         <h2 className="text-2xl font-black text-white mb-4">Characters</h2>
-        <div className="flex gap-2 overflow-x-auto mb-5 pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        <div className="mb-5 flex max-w-full gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           {CHAR_FILTERS.map((f) => {
             const on = charFilter === f
             const hex = f === 'ALL' ? '#ffd24d' : RARITY_PALETTE[f].hex
