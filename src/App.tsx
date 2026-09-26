@@ -59,6 +59,54 @@ const RARITY_PALETTE: Record<Rarity, { hex: string; name: string }> = {
 
 const CHAR_FILTERS: Array<'ALL' | Rarity> = ['ALL', 'FREE', 'COMMON', 'RARE', 'EPIC', 'LEGENDARY', 'MYTHIC']
 
+function HScroll({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  const scrollerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = scrollerRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return
+      e.preventDefault()
+      el.scrollLeft += e.deltaY
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
+
+  const scrollByDir = (dir: -1 | 1) => {
+    scrollerRef.current?.scrollBy({ left: dir * 300, behavior: 'smooth' })
+  }
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        aria-label="Scroll left"
+        onClick={() => scrollByDir(-1)}
+        className="hidden lg:flex absolute left-0 top-1/2 z-10 h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-[#170d24]/90 text-2xl font-black text-white shadow-lg backdrop-blur-sm hover:bg-[#2a1c42]"
+      >
+        ‹
+      </button>
+      <div
+        ref={scrollerRef}
+        className={`flex overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${className}`}
+        style={{ touchAction: 'pan-x', WebkitOverflowScrolling: 'touch' }}
+      >
+        {children}
+      </div>
+      <button
+        type="button"
+        aria-label="Scroll right"
+        onClick={() => scrollByDir(1)}
+        className="hidden lg:flex absolute right-0 top-1/2 z-10 h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-[#170d24]/90 text-2xl font-black text-white shadow-lg backdrop-blur-sm hover:bg-[#2a1c42]"
+      >
+        ›
+      </button>
+    </div>
+  )
+}
+
 export default function App() {
   const { status: sessionStatus, userId, email, username } = useSession()
   const isRecoveringPassword = useIsRecoveringPassword()
@@ -224,13 +272,13 @@ export default function App() {
   // Dynamic header title that reflects the section currently in view.
   const [headerTitle, setHeaderTitle] = useState('Home')
   const charSectionRef = useRef<HTMLElement>(null)
-  const storeSectionRef = useRef<HTMLElement>(null)
+  const themesSectionRef = useRef<HTMLElement>(null)
   useEffect(() => {
     const onScroll = () => {
       const y = window.scrollY + 140
-      const storeTop = storeSectionRef.current?.offsetTop ?? Infinity
+      const themesTop = themesSectionRef.current?.offsetTop ?? Infinity
       const charTop = charSectionRef.current?.offsetTop ?? Infinity
-      if (y >= storeTop) setHeaderTitle('Store')
+      if (y >= themesTop) setHeaderTitle('Themes')
       else if (y >= charTop) setHeaderTitle('Characters')
       else setHeaderTitle('Home')
     }
@@ -337,7 +385,7 @@ export default function App() {
             )
           })}
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
+        <HScroll className="gap-4 pb-2 px-1 lg:px-14">
           {filteredCharacters.map((char) => {
             const isOwned = owned.includes(char.id)
             const isSelected = selected === char.id
@@ -346,7 +394,7 @@ export default function App() {
             const need = char.cardsNeeded ?? 0
             const have = need > 0 ? Math.min(cards[char.id] ?? 0, need) : 0
             return (
-              <article key={char.id} className={`rounded-[32px] p-5 transition-all ${isSelected ? 'bg-[#352554] border-2 border-[#6ee7a8]' : 'bg-[#2a1c42] border-2 border-transparent'}`}>
+              <article key={char.id} className={`shrink-0 w-44 rounded-[32px] p-5 transition-all ${isSelected ? 'bg-[#352554] border-2 border-[#6ee7a8]' : 'bg-[#2a1c42] border-2 border-transparent'}`}>
                 <div className="flex justify-between items-center mb-2"><span className="text-[9px] font-black uppercase px-2 py-0.5 rounded" style={{ color: color, backgroundColor: `${color}20` }}>{char.rarity}</span></div>
                 <div className="flex-1 flex justify-center py-4">
                   <div className="h-20 w-20">
@@ -371,12 +419,12 @@ export default function App() {
               </article>
             )
           })}
-        </div>
+        </HScroll>
       </section>
 
-      <section ref={storeSectionRef} className="max-w-7xl mx-auto mt-12 mb-10">
-        <h2 className="text-xl font-black text-white mb-4 px-4">Store</h2>
-        <div className="flex gap-4 overflow-x-auto pb-6 px-4 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden" style={{ touchAction: 'pan-x', WebkitOverflowScrolling: 'touch' }}>
+      <section ref={themesSectionRef} className="max-w-7xl mx-auto mt-12 mb-10">
+        <h2 className="text-xl font-black text-white mb-4 px-4">Themes</h2>
+        <HScroll className="gap-4 pb-6 px-4 lg:px-14">
           {OBSTACLES.map((o) => {
             const on = obstacle === o.id
             const isOwned = (ownedObstacles || []).includes(o.id) || o.id === 'woodo'
@@ -410,7 +458,7 @@ export default function App() {
               </button>
             )
           })}
-        </div>
+        </HScroll>
       </section>
 
       {/* LOBBY P2P */}
@@ -503,7 +551,7 @@ export default function App() {
               <div className="flex items-center gap-4">
                 <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-[#8ec5ff]/20 text-2xl">👤</div>
 
-                {isEditingUsername ? (
+                {isEditingUsername && !isGuestPlay ? (
                   <div className="flex min-w-0 flex-1 flex-col gap-2">
                     <input
                       type="text"
@@ -537,6 +585,7 @@ export default function App() {
                       <p className="truncate font-bold text-white">{displayName}</p>
                       <p className="truncate text-[11px] font-bold text-white/40">{accountEmail}</p>
                     </div>
+                    {!isGuestPlay && (
                     <button
                       onClick={startEditingUsername}
                       aria-label="Edit username"
@@ -544,6 +593,7 @@ export default function App() {
                     >
                       ✏️
                     </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -601,7 +651,19 @@ export default function App() {
             </div>
 
             {logoutError && <p className="mb-3 text-center text-xs font-bold text-[#ff4d4d]">{logoutError}</p>}
-            <button onClick={() => void handleLogout()} className="w-full rounded-2xl bg-[#ff6b6b] py-4 font-black uppercase text-white">Log Out</button>
+            {isGuestPlay ? (
+              <div>
+                <p className="mb-3 text-center text-sm font-bold text-[#8ec5ff]">Log in to save your score and progress!</p>
+                <button
+                  onClick={() => { setIsEditingUsername(false); setShowSettings(false); disableGuestPlay() }}
+                  className="w-full rounded-2xl bg-[#6ee7a8] py-4 font-black uppercase text-[#170d24]"
+                >
+                  Log In / Create Account
+                </button>
+              </div>
+            ) : (
+              <button onClick={() => void handleLogout()} className="w-full rounded-2xl bg-[#ff6b6b] py-4 font-black uppercase text-white">Log Out</button>
+            )}
           </div>
         </div>
       )}

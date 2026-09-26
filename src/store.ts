@@ -57,7 +57,7 @@ function getYesterdayStr() {
 }
 
 const DEFAULT_STATE: GameState = {
-  coins: 500, diamonds: 50, xp: 0, best: 0, totalGames: 0,
+  coins: 100, diamonds: 10, xp: 0, best: 0, totalGames: 0,
   owned: ['mozzarella'], ownedObstacles: ['woodo'],
   selected: 'mozzarella', obstacle: 'woodo', lastSpin: 0,
   cosmetics: [], equipped: {}, cards: {},
