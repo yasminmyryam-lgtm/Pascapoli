@@ -351,8 +351,8 @@ export default function Game3D({
   return (
     <div className="game-shell font-display selection:bg-transparent">
       <div
-        className="relative h-full w-full max-h-full max-w-full overflow-hidden"
-        style={{ background: env.backgroundStyle, touchAction: 'none', WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none', WebkitTapHighlightColor: 'transparent' }}
+        className="game-stage"
+        style={{ flex: '0 0 auto', background: env.backgroundStyle, touchAction: 'none', WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none', WebkitTapHighlightColor: 'transparent' }}
         onContextMenu={(e) => e.preventDefault()}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -372,7 +372,7 @@ export default function Game3D({
             }}
             camera={{ fov: CAMERA3D.fov, near: CAMERA3D.near, far: CAMERA3D.far, position: [spawnLane, W3.START_Y, 0.22] }}
             onCreated={({ camera }) => aimCamera3(camera, spawnLane, W3.START_Y, 0)}
-            style={{ position: 'absolute', inset: 0 }}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
           >
             <Scene3D
               world={worldRef.current}

@@ -200,10 +200,21 @@ export default function App() {
 
   const peerInstance = useRef<any>(null)
   const dataConnection = useRef<any>(null)
+  const [liveConnection, setLiveConnection] = useState<any>(null)
 
   const wheelReady = spinRemaining(lastSpin) <= 0
 
+  const attachConnection = (conn: any) => {
+    dataConnection.current = conn
+    setLiveConnection(conn)
+  }
+
   const handleGameLaunch = (mode: 'NORMAL'|'CHALLENGE'|'COOP') => {
+    if (mode === 'COOP') {
+      relayHandled.current = true
+      clearPendingRelay()
+      setPendingRelay(null)
+    }
     setActiveRelay(null)
     setActiveEngineMode(mode); setGameSessionId(Date.now()); setIsGameEngineMounted(true)
   }
@@ -215,6 +226,8 @@ export default function App() {
   useEffect(() => {
     if (!pendingRelay || relayHandled.current || isRecoveringPassword) return
     if (sessionStatus === 'LOADING' || !canEnterApp) return
+    // An open lobby or a live peer must keep running. Relay never takes that socket.
+    if (showNetworkLobby || activeEngineMode === 'COOP' || networkRole || dataConnection.current) return
     if (userId && relayBlocks(pendingRelay, userId)) {
       relayHandled.current = true
       clearPendingRelay()
@@ -232,7 +245,7 @@ export default function App() {
     clearPendingRelay()
     setPendingRelay(null)
     window.history.replaceState({}, document.title, '/')
-  }, [pendingRelay, sessionStatus, userId, canEnterApp, isRecoveringPassword])
+  }, [pendingRelay, sessionStatus, userId, canEnterApp, isRecoveringPassword, showNetworkLobby, activeEngineMode, networkRole])
 
   // --- REȚEA PEERJS ---
   const initializeHostServer = () => {
@@ -244,7 +257,7 @@ export default function App() {
     peer.on('open', () => setNetworkStatus('IDLE'))
     peer.on('error', (err: any) => { console.error('Host peer error:', err); setNetworkStatus('ERROR') })
     peer.on('connection', (conn: any) => {
-      dataConnection.current = conn
+      attachConnection(conn)
       conn.on('open', () => { setCoopConfig(prev => ({ ...prev, isHost: true, p1Char: selected })) })
       conn.on('error', (err: any) => { console.error('Host conn error:', err); setNetworkStatus('ERROR') })
       conn.on('data', (packet: any) => {
@@ -267,7 +280,7 @@ export default function App() {
     peer.on('open', () => {
       const conn = peer.connect(`pastapoli-server-${networkInput}`, { reliable: true })
       conn.on('open', () => {
-        dataConnection.current = conn
+        attachConnection(conn)
         conn.send({ opCode: 'CLIENT_HANDSHAKE', payload: { charId: selected } })
         setCoopConfig(prev => ({ ...prev, isHost: false, roomId: networkInput, p2Char: selected }))
       })
@@ -300,7 +313,7 @@ export default function App() {
   const terminateNetworkSession = () => {
     if (dataConnection.current) dataConnection.current.close()
     if (peerInstance.current) peerInstance.current.destroy()
-    dataConnection.current = null; peerInstance.current = null; setNetworkRole(null); setNetworkStatus('IDLE')
+    dataConnection.current = null; peerInstance.current = null; setLiveConnection(null); setNetworkRole(null); setNetworkStatus('IDLE')
   }
 
   const activeChar = CHARACTERS.find((c) => c.id === selected) ?? CHARACTERS[0]
@@ -343,10 +356,11 @@ export default function App() {
     setActiveRelay(null)
     setPendingRelay(null)
     clearPendingRelay()
-    terminateNetworkSession()
+    if (activeEngineMode !== 'COOP' && !showNetworkLobby) terminateNetworkSession()
   }
 
-  if (activeRelay || (pendingRelay && canEnterApp && !(userId && relayBlocks(pendingRelay, userId)))) {
+  const coopOwnsScreen = showNetworkLobby || activeEngineMode === 'COOP' || networkRole !== null || liveConnection != null
+  if (!coopOwnsScreen && (activeRelay || (pendingRelay && canEnterApp && !(userId && relayBlocks(pendingRelay, userId))))) {
     return (
       <div className="fixed inset-0 z-[1000] bg-black">
         {activeRelay ? (
@@ -419,7 +433,7 @@ export default function App() {
               <button onClick={() => handleGameLaunch('NORMAL')} className="bg-[#6ee7a8] text-[#170d24] py-4 rounded-2xl font-black uppercase">▶ Solo</button>
               <button onClick={() => setCustomizeId(activeChar.id)} className="bg-[#412e61] text-white py-4 rounded-2xl font-black uppercase">👕 Custom</button>
               <button onClick={() => setShowChallengePopup(true)} className="bg-[#ff7ad9] text-[#170d24] py-4 rounded-2xl font-black uppercase">🔥 Hard</button>
-              <button onClick={() => { setNetworkRole(null); setCoopConfig(prev => ({ ...prev, p1Char: selected, p2Char: selected })); setShowNetworkLobby(true); }} className="bg-[#8ec5ff] text-[#170d24] py-4 rounded-2xl font-black uppercase">🤝 Co-op</button>
+              <button onClick={() => { relayHandled.current = true; clearPendingRelay(); setPendingRelay(null); setActiveRelay(null); setNetworkRole(null); setCoopConfig(prev => ({ ...prev, p1Char: selected, p2Char: selected })); setShowNetworkLobby(true); }} className="bg-[#8ec5ff] text-[#170d24] py-4 rounded-2xl font-black uppercase">🤝 Co-op</button>
             </div>
           </div>
         </div>
@@ -587,13 +601,13 @@ export default function App() {
                    key={gameSessionId}
                    mode={activeEngineMode}
                    coopConfig={coopConfig}
-                   connection={dataConnection.current}
+                   connection={liveConnection}
                    onClose={() => { setIsGameEngineMounted(false); terminateNetworkSession(); }}
                    onReplay={() => { if (activeEngineMode === 'COOP' && dataConnection.current) { dataConnection.current.send({ opCode: 'REPLAY_REQ' }) }; setGameSessionId(Date.now()) }}
                  />
                </Suspense>
              ) : (
-             <Game key={gameSessionId} mode={activeEngineMode} coopConfig={coopConfig} connection={dataConnection.current} relay={activeRelay} accountId={userId} onClose={() => { setIsGameEngineMounted(false); setActiveRelay(null); terminateNetworkSession(); }} onReplay={() => { if(activeEngineMode==='COOP' && dataConnection.current){dataConnection.current.send({opCode:'REPLAY_REQ'})}; setGameSessionId(Date.now()) }} />
+             <Game key={gameSessionId} mode={activeEngineMode} coopConfig={coopConfig} connection={liveConnection} relay={activeRelay} accountId={userId} onClose={() => { setIsGameEngineMounted(false); setActiveRelay(null); terminateNetworkSession(); }} onReplay={() => { if(activeEngineMode==='COOP' && dataConnection.current){dataConnection.current.send({opCode:'REPLAY_REQ'})}; setGameSessionId(Date.now()) }} />
              )}
            </ErrorBoundary>
         </div>

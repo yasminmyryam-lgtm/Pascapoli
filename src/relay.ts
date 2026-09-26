@@ -92,11 +92,19 @@ export function loadPendingRelay(): RelayRun | null {
   }
 }
 
-/** URL first, then the copy saved before auth. Persists a fresh link immediately. */
+/** Co-op room links. These never count as a Relay Run, including a saved handoff. */
+const COOP_QUERY_KEYS = ['room', 'roomId', 'coop', 'peer']
+
+/**
+ * URL first, then the copy saved before auth. Persists a fresh link immediately.
+ * A co-op room query skips that handoff. Auth redirects still resume it.
+ */
 export function captureRelay(search: string): RelayRun | null {
-  const fromUrl = parseRelay(search)
-  if (fromUrl) {
-    savePendingRelay(fromUrl)
+  const params = new URLSearchParams(search)
+  if (COOP_QUERY_KEYS.some((key) => params.has(key))) return null
+  if (params.get('relay') != null) {
+    const fromUrl = parseRelay(search)
+    if (fromUrl) savePendingRelay(fromUrl)
     return fromUrl
   }
   return loadPendingRelay()
