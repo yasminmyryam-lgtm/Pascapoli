@@ -47,7 +47,7 @@ const CHEST_PICKUP_RADIUS = 82
 
 type PlayView = { w: number; h: number; scale: number; xScale: number }
 
-/** Phones, iPads, and any portrait viewport — not the framed desktop box. */
+/** Phones, iPads, and any portrait viewport. Desktop widescreen is everything else. */
 function isMobilePlayfield(viewportW: number, viewportH: number) {
   return viewportW <= 1024 || viewportH > viewportW
 }
@@ -56,8 +56,8 @@ function isMobilePlayfield(viewportW: number, viewportH: number) {
  * Screen-pixel playfield. Sprites/gaps/gravity share one uniform `scale`
  * (same multiplier on width and height — never stretch). Phones/iPads and
  * any portrait viewport map the 620-tall design onto the screen so pillars
- * stay thick. Laptop/desktop (>1024px landscape) uses width/960 so the
- * framed 960×620 stage is unchanged.
+ * stay thick. Laptop/desktop (>1024px landscape) scales from the live window
+ * width so a fullscreen widescreen stage stays proportionate.
  */
 function computePlayView(frameW: number, frameH: number, viewportW = frameW, viewportH = frameH): PlayView {
   const w = Math.max(1, frameW)

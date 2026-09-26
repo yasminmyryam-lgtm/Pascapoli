@@ -36,10 +36,10 @@ body {
 }
 
 /*
-  Mobile: stage fills the viewport. Entity sizes live in Game.tsx
-  (uniform scale + screen-pixel physics) — no letterbox strip.
-  Desktop (>1024px / lg+): unchanged framed 960×620 window.
-  Tablets and iPads (768–1024px) use the same fullscreen stage as phones.
+  The playfield fills the viewport on every screen size.
+  Entity sizes live in Game.tsx (uniform scale, screen-pixel physics).
+  Phone and iPad scaling is unchanged. Desktop uses the same full-window
+  stage instead of a framed 960×620 box.
 */
 .game-shell {
   position: fixed;
@@ -85,16 +85,6 @@ body {
 }
 
 @media (min-width: 1025px) {
-  .game-stage {
-    width: min(56rem, 100vw, calc(90vh * 960 / 620));
-    width: min(56rem, 100vw, calc(90dvh * 960 / 620));
-    height: min(90vh, calc(min(56rem, 100vw) * 620 / 960));
-    height: min(90dvh, calc(min(56rem, 100vw) * 620 / 960));
-    border-radius: 48px;
-    border: 8px solid #000;
-    box-shadow: 0 25px 50px rgb(0 0 0 / 0.45);
-  }
-
   .game-hud {
     top: max(2rem, env(safe-area-inset-top));
     left: max(2rem, env(safe-area-inset-left));
