@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties, type JSX } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { anchorsFor, bodyFor } from './characters'
+import { offsetFor } from './accessoryOffsets'
+import { anchorsFor, bodyFor, characterById } from './characters'
 import { fitCacheKey, fitScaleFromBBox, fitTransform, peekFitScale, rememberFitScale } from './art/fit'
 import { ART_CONTENT_TRANSFORM, ART_SCALE, ART_VIEW_BOX, DEFAULT_ANCHORS, type AnchorName, type CharacterAnchors } from './art/kit'
 import { isFounder, useGameState } from './store'
@@ -701,24 +702,48 @@ export function cosmeticsForCharacter(charId: string, equipped: Record<string, R
  * anchor relative to `DEFAULT_ANCHORS`. `pad` art keeps the legacy
  * origin/scale/rotate placement in the 120×132 grid.
  */
-function accessoryTransform(c: Cosmetic, anchors: CharacterAnchors): string {
+function accessoryTransform(charId: string, c: Cosmetic, anchors: CharacterAnchors): string {
   const a = anchors[c.anchor]
+  const off = offsetFor(charId, c.id)
   if (c.space === 'viewbox') {
     const def = DEFAULT_ANCHORS[c.anchor]
-    const tx = (a.x - def.x) * ART_SCALE + c.offsetX
-    const ty = (a.y - def.y) * ART_SCALE + c.offsetY
+    const tx = (a.x - def.x) * ART_SCALE + c.offsetX + off.x
+    const ty = (a.y - def.y) * ART_SCALE + c.offsetY + off.y
     const parts = [`translate(${tx} ${ty})`]
-    const rotation = a.rotation + c.rotation
+    const rotation = a.rotation + c.rotation + off.rotation
     if (rotation !== 0) parts.push(`rotate(${rotation} 128 128)`)
+    if (off.scale !== 1) parts.push(`translate(128 128) scale(${off.scale}) translate(-128 -128)`)
     return parts.join(' ')
   }
-  const parts = [`translate(${a.x + c.offsetX} ${a.y + c.offsetY})`]
-  const rotation = a.rotation + c.rotation
+  const parts = [`translate(${a.x + c.offsetX + off.x} ${a.y + c.offsetY + off.y})`]
+  const rotation = a.rotation + c.rotation + off.rotation
   if (rotation !== 0) parts.push(`rotate(${rotation})`)
-  const scale = a.scale * c.scale
+  const scale = a.scale * c.scale * off.scale
   if (scale !== 1) parts.push(`scale(${scale})`)
   if (c.origin) parts.push(`translate(${-c.origin[0]} ${-c.origin[1]})`)
   return parts.join(' ')
+}
+
+/** Back-mounted wings replace a character's built-in pair when an alt sprite exists. */
+function baseBody(charId: string, equipped: Record<string, string>) {
+  const wearingWings = Object.values(equipped).some((id) => {
+    const item = cosmeticById(id)
+    return item?.slot === 'wings' && item.anchor === 'back'
+  })
+  const alt = characterById(charId).altBaseSprite
+  if (wearingWings && alt) {
+    return () => (
+      <image
+        href={`/characters/${alt}`}
+        x={0}
+        y={6}
+        width={120}
+        height={120}
+        preserveAspectRatio="xMidYMid meet"
+      />
+    )
+  }
+  return bodyFor(charId)
 }
 
 /** Resolves the whole catalogue against the save — the real inventory view. */
@@ -752,7 +777,7 @@ function CompositeLayers({
   charId: string
   equipped: Record<string, string>
 }) {
-  const Body = bodyFor(charId)
+  const Body = baseBody(charId, equipped)
   const anchors = anchorsFor(charId)
   const worn = Object.values(equipped)
     .map(cosmeticById)
@@ -763,7 +788,7 @@ function CompositeLayers({
     worn
       .filter((c) => c.layer === id && (c.space === 'viewbox' ? 'viewbox' : 'pad') === space)
       .map((c) => (
-        <g key={c.id} transform={accessoryTransform(c, anchors)}>
+        <g key={c.id} transform={accessoryTransform(charId, c, anchors)}>
           {c.render()}
         </g>
       ))

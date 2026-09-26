@@ -24,6 +24,12 @@ export type Character = {
   currency?: 'COINS' | 'DIAMONDS'
   /** MYTHIC only: how many chest cards are needed to unlock. Never buyable with currency. */
   cardsNeeded?: number
+  /**
+   * Wingless (or otherwise stripped) base image in `/public/characters`.
+   * Used only while a back-mounted wings accessory is equipped.
+   * The file can be added later; until then the name is the contract.
+   */
+  altBaseSprite?: string
   Art: (p: ArtProps) => JSX.Element
 }
 
@@ -83,9 +89,9 @@ const ROSTER: Omit<Character, 'Art'>[] = [
   { id: 'spaghetto', name: 'Spaghetto Fantasma', tag: 'Haunts the pasta aisle', rarity: 'COMMON', price: 5200, unlockLevel: 7 },
   { id: 'olive-ocarina', name: 'Olive Ocarina', tag: 'Plays a salty little tune', rarity: 'RARE', price: 950, unlockLevel: 5 },
   { id: 'fursecino-fortino', name: 'Fursecino Fortino', tag: 'Cookie muscle, zero crumbs', rarity: 'EPIC', price: 6400, unlockLevel: 8 },
-  { id: 'fursecina-fatina', name: 'Fursecina Fatina', tag: 'Fairy cookie, extra chocolate', rarity: 'EPIC', price: 6800, unlockLevel: 8 },
+  { id: 'fursecina-fatina', name: 'Fursecina Fatina', tag: 'Fairy cookie, extra chocolate', rarity: 'EPIC', price: 6800, unlockLevel: 8, altBaseSprite: 'Fursecina-Fatina-wingless.png' },
   { id: 'donutino-batutino', name: 'Donutino Batutino', tag: 'Glazed, horned, airborne', rarity: 'EPIC', price: 7200, unlockLevel: 9 },
-  { id: 'donutina-fantina', name: 'Donutina Fantina', tag: 'Sprinkles and fairy wings', rarity: 'EPIC', price: 7800, unlockLevel: 9 },
+  { id: 'donutina-fantina', name: 'Donutina Fantina', tag: 'Sprinkles and fairy wings', rarity: 'EPIC', price: 7800, unlockLevel: 9, altBaseSprite: 'Donutina-Fantina-wingless.png' },
   { id: 'risotto-roboto', name: 'Risotto Roboto', tag: 'Creamy circuits, al dente', rarity: 'LEGENDARY', price: 16000, unlockLevel: 12 },
   { id: 'pestino-pinguino', name: 'Pestino Pinguino', tag: 'Basil feathers, icy stare', rarity: 'LEGENDARY', price: 19000, unlockLevel: 14 },
   { id: 'llama-lasagna', name: 'Llama Lasagna', tag: 'Layers on layers, no spit', rarity: 'LEGENDARY', price: 22000, unlockLevel: 15 },

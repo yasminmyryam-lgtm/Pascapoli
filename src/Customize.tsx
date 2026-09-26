@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import { CHARACTERS } from './characters'
 import {
-  AccessoryArt,
   CharacterView,
   COSMETIC_RARITY,
   SLOT_LABEL,
@@ -64,20 +63,16 @@ export default function Customize({ charId, onClose }: { charId: string, onClose
               const meta = COSMETIC_RARITY[c.rarity]
 
               return (
-                <article key={c.id} className="relative flex flex-col bg-white/5 rounded-[28px] border-2 h-60 overflow-visible transition-all" style={{ borderColor: c.equipped ? meta.color : 'transparent' }}>
+                <article key={c.id} className="relative flex flex-col overflow-hidden bg-white/5 rounded-[28px] border-2 h-60 transition-all" style={{ borderColor: c.equipped ? meta.color : 'transparent' }}>
                   <div className="absolute top-3 w-full px-3 flex justify-between items-center z-10">
                     <span className="px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-widest" style={{ background: meta.color, color: '#1a0d2e' }}>{c.rarity}</span>
                     <span className="px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-widest bg-black/40 text-white/60">{TYPE_LABEL[c.type]}</span>
                   </div>
-                  <div className="flex-1 flex justify-center items-center relative mt-4">
-                    <div className="absolute w-20 h-20 rounded-full blur-[30px] opacity-20" style={{ background: meta.color }}></div>
-                    {/* worn on the actual character, so the anchor fit is visible before buying */}
-                    <CharacterView charId={char.id} equippedOverride={{ [c.slot]: c.id }} className="h-20 w-20 drop-shadow-xl relative z-10" />
-                    {c.unlocked && (
-                      <AccessoryArt id={c.id} className="absolute bottom-0 right-1 h-8 w-8 opacity-60" />
-                    )}
+                  <div className="relative mx-auto mt-8 h-24 w-24 overflow-hidden">
+                    <div className="absolute left-1/2 top-1/2 h-20 w-20 -translate-x-1/2 -translate-y-1/2 rounded-full blur-[30px] opacity-20" style={{ background: meta.color }}></div>
+                    <CharacterView charId={char.id} equippedOverride={{ [c.slot]: c.id }} className="absolute inset-0 z-10 h-full w-full" />
                   </div>
-                  <div className="p-4 bg-black/40 shrink-0">
+                  <div className="mt-auto p-4 bg-black/40 shrink-0">
                     <h3 className="text-white font-bold text-center text-xs mb-3 truncate w-full">{c.name}</h3>
                     {!c.unlocked ? (
                       <button
