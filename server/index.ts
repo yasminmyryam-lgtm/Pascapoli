@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { readFile } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { diamondReviveCost, isAdRevive, scalePayout } from '../shared/economy.ts'
@@ -245,8 +245,10 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json',
+  '.map': 'application/json',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
@@ -254,6 +256,16 @@ const MIME: Record<string, string> = {
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
   '.woff2': 'font/woff2',
+  '.wasm': 'application/wasm',
+  '.txt': 'text/plain; charset=utf-8',
+}
+
+function isRealFile(file: string) {
+  try {
+    return statSync(file).isFile()
+  } catch {
+    return false
+  }
 }
 
 async function serveStatic(res: ServerResponse, url: URL) {
@@ -262,21 +274,34 @@ async function serveStatic(res: ServerResponse, url: URL) {
     return
   }
   const clean = path.normalize(decodeURIComponent(url.pathname)).replace(/^[/\\]+/, '')
-  let file = path.join(DIST, clean)
-  if (!file.startsWith(DIST)) {
+  const requested = clean === '' ? path.join(DIST, 'index.html') : path.join(DIST, clean)
+  if (!requested.startsWith(DIST)) {
     json(res, 403, { error: 'Forbidden' })
     return
   }
-  if (!existsSync(file) || clean === '') file = path.join(DIST, 'index.html')
-  try {
-    const data = await readFile(file)
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] ?? 'application/octet-stream' })
-    res.end(data)
-  } catch {
-    const fallback = await readFile(path.join(DIST, 'index.html'))
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-    res.end(fallback)
+
+  // Hashed bundles and other files must never fall through to index.html.
+  // A 200 HTML body for a .js URL is what the browser reports as
+  // "'text/html' is not a valid JavaScript MIME type."
+  const wantsFile = clean !== '' && path.extname(clean) !== ''
+  let file = requested
+  if (!isRealFile(file)) {
+    if (wantsFile) {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' })
+      res.end('Not found')
+      return
+    }
+    file = path.join(DIST, 'index.html')
   }
+
+  const data = await readFile(file)
+  const ext = path.extname(file).toLowerCase()
+  const html = ext === '.html'
+  res.writeHead(200, {
+    'Content-Type': MIME[ext] ?? 'application/octet-stream',
+    'Cache-Control': html ? 'no-cache' : 'public, max-age=31536000, immutable',
+  })
+  res.end(data)
 }
 
 const app = createServer(async (req, res) => {
