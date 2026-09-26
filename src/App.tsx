@@ -433,7 +433,9 @@ export default function App() {
               <button onClick={() => handleGameLaunch('NORMAL')} className="bg-[#6ee7a8] text-[#170d24] py-4 rounded-2xl font-black uppercase">▶ Solo</button>
               <button onClick={() => setCustomizeId(activeChar.id)} className="bg-[#412e61] text-white py-4 rounded-2xl font-black uppercase">👕 Custom</button>
               <button onClick={() => setShowChallengePopup(true)} className="bg-[#ff7ad9] text-[#170d24] py-4 rounded-2xl font-black uppercase">🔥 Hard</button>
-              <button onClick={() => { relayHandled.current = true; clearPendingRelay(); setPendingRelay(null); setActiveRelay(null); setNetworkRole(null); setCoopConfig(prev => ({ ...prev, p1Char: selected, p2Char: selected })); setShowNetworkLobby(true); }} className="bg-[#8ec5ff] text-[#170d24] py-4 rounded-2xl font-black uppercase">🤝 Co-op</button>
+              {viewMode === '2D' && (
+                <button onClick={() => { relayHandled.current = true; clearPendingRelay(); setPendingRelay(null); setActiveRelay(null); setNetworkRole(null); setCoopConfig(prev => ({ ...prev, p1Char: selected, p2Char: selected })); setShowNetworkLobby(true); }} className="bg-[#8ec5ff] text-[#170d24] py-4 rounded-2xl font-black uppercase">🤝 Co-op</button>
+              )}
             </div>
           </div>
         </div>
@@ -595,7 +597,7 @@ export default function App() {
       {isGameEngineMounted && (
         <div className="fixed inset-0 z-[1000] bg-black">
            <ErrorBoundary onClose={() => { setIsGameEngineMounted(false); terminateNetworkSession(); }}>
-             {viewMode === '3D' && !activeRelay ? (
+             {viewMode === '3D' && activeEngineMode !== 'COOP' && !activeRelay ? (
                <Suspense fallback={<div className="fixed inset-0 grid place-items-center bg-black"><p className="text-2xl font-black text-white animate-pulse">Loading 3D…</p></div>}>
                  <Game3D
                    key={gameSessionId}
