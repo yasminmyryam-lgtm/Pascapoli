@@ -377,8 +377,8 @@ export default function App() {
   }
 
   return (
-    <main className="min-h-screen w-full max-w-full overflow-x-clip bg-[#1b1429] font-display pb-32" style={{ background: 'radial-gradient(150% 100% at 50% 0%, #2f1d4a 0%, #11091c 100%)' }}>
-      <header className="sticky top-0 z-50 w-full border-b border-white/5 bg-[#1b1429]/95 shadow-md backdrop-blur-md">
+    <main className="min-h-screen w-full max-w-full overflow-x-clip bg-[#1b1429] pt-20 font-display pb-32 md:pt-24" style={{ background: 'radial-gradient(150% 100% at 50% 0%, #2f1d4a 0%, #11091c 100%)' }}>
+      <header className="fixed top-0 left-0 z-50 w-full border-b border-white/5 bg-[#1b1429] shadow-md backdrop-blur-md">
         <div className="mx-auto flex w-full max-w-7xl items-center justify-end gap-2 px-3 py-2 md:justify-between md:p-4">
           <h1 className="hidden text-2xl font-black text-white md:block">{headerTitle}</h1>
           <div className="flex min-w-0 items-center gap-1.5 md:gap-2">
@@ -396,7 +396,7 @@ export default function App() {
         </div>
       </header>
 
-      <section className="max-w-7xl mx-auto mt-8 px-4">
+      <section className="max-w-7xl mx-auto mt-4 px-4">
         <div className="bg-[#2a1c42] rounded-[48px] p-6 shadow-2xl flex flex-col lg:flex-row items-center gap-10">
           {/* no overflow clip: tall accessories spill out instead of forcing
               the character to be scaled down to fit */}
