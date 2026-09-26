@@ -76,6 +76,19 @@ export default function Game3D({
     activeRef.current = Boolean(assets) && phase === 'playing' && !paused && !worldRef.current.over && !countdownRef.current && !offerRevive
   }, [assets, phase, paused, offerRevive])
 
+  useEffect(() => {
+    const html = document.documentElement
+    const body = document.body
+    const prevHtml = html.style.overflow
+    const prevBody = body.style.overflow
+    html.style.overflow = 'hidden'
+    body.style.overflow = 'hidden'
+    return () => {
+      html.style.overflow = prevHtml
+      body.style.overflow = prevBody
+    }
+  }, [])
+
   const settle = useCallback(() => {
     if (settledRef.current) return
     settledRef.current = true
@@ -336,9 +349,9 @@ export default function Game3D({
   const spawnLane = isCoop ? (local === 1 ? -W3.LANE : W3.LANE) : 0
 
   return (
-    <div className="fixed inset-0 z-[999] bg-black font-display flex items-center justify-center selection:bg-transparent">
+    <div className="game-shell font-display selection:bg-transparent">
       <div
-        className="relative h-full w-full overflow-hidden"
+        className="relative h-full w-full max-h-full max-w-full overflow-hidden"
         style={{ background: env.backgroundStyle, touchAction: 'none', WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none', WebkitTapHighlightColor: 'transparent' }}
         onContextMenu={(e) => e.preventDefault()}
         onPointerDown={onPointerDown}

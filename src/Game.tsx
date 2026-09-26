@@ -394,6 +394,20 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
     return () => window.removeEventListener('keydown', keyHandler)
   }, [dispatchJumpAction])
 
+  // Lock page scroll/overscroll while the overlay playfield is up.
+  useEffect(() => {
+    const html = document.documentElement
+    const body = document.body
+    const prevHtml = html.style.overflow
+    const prevBody = body.style.overflow
+    html.style.overflow = 'hidden'
+    body.style.overflow = 'hidden'
+    return () => {
+      html.style.overflow = prevHtml
+      body.style.overflow = prevBody
+    }
+  }, [])
+
   // --- PAUSE ON TAB HIDE (prevents unfair deaths & saves battery) ---
   useEffect(() => {
     const onVis = () => {
@@ -640,8 +654,8 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
   }
 
   return (
-    <div className="fixed inset-0 z-[999] bg-black font-display flex flex-col items-center justify-center selection:bg-transparent">
-      <div className={`relative w-full h-full max-h-[100vh] md:max-h-[90vh] md:max-w-4xl md:rounded-[48px] md:border-8 border-black overflow-hidden shadow-2xl bg-[#11091c] ${shake ? 'screen-shake' : ''}`} style={{ background: activeEnvironment.backgroundStyle, aspectRatio: `${GAME_WIDTH} / ${GAME_HEIGHT}`, touchAction: 'none', WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none', WebkitTapHighlightColor: 'transparent' }} onContextMenu={(e) => e.preventDefault()} onPointerDown={(e) => { e.preventDefault(); dispatchJumpAction() }}>
+    <div className="game-shell font-display selection:bg-transparent">
+      <div className={`game-stage bg-[#11091c] ${shake ? 'screen-shake' : ''}`} style={{ background: activeEnvironment.backgroundStyle, WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none', WebkitTapHighlightColor: 'transparent' }} onContextMenu={(e) => e.preventDefault()} onPointerDown={(e) => { e.preventDefault(); dispatchJumpAction() }}>
         {activeEnvironment.Background && <activeEnvironment.Background />}
 
         {pipesToRender.map((p, i) => {
