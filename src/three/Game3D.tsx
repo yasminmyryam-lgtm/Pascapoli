@@ -10,7 +10,7 @@ import { playRewardedAdSequence } from '../ads/adService'
 import { chargeReviveDiamonds, isAdRevive } from '../economy/economyApi'
 import ReviveOffer from '../economy/ReviveOffer'
 import { UnboxingOverlay } from '../Game'
-import Scene3D, { aimCamera3, CAMERA3D } from './Scene3D'
+import Scene3D, { frameCamera, CAMERA3D } from './Scene3D'
 import { useRunAssets } from './useRunAssets'
 import { createWorld3, flap3, readSnap3, revive3, writeSnap3, W3, type Mode3D, type Snap3, type Tick3, type World3 } from './world3d'
 
@@ -49,7 +49,14 @@ export default function Game3D({
     ? (guest ? coopConfig.p1Char : coopConfig.p2Char)
     : selected
   const mateChar = (CHARACTERS.find((c) => c.id === mateId) ?? CHARACTERS[0]).id
-  const { assets, error } = useRunAssets(env, mateChar, equipped[mateChar] ?? {})
+  const selfChar = (CHARACTERS.find((c) => c.id === selected) ?? CHARACTERS[0]).id
+  const { assets, error } = useRunAssets(
+    env,
+    selfChar,
+    equipped[selfChar] ?? {},
+    mateChar,
+    equipped[mateChar] ?? {},
+  )
 
   const worldRef = useRef<World3>(createWorld3(simMode, isCoop ? coopConfig.gameSeed || 1 : Date.now()))
   const [phase, setPhase] = useState<'playing' | 'unboxing' | 'over'>('playing')
@@ -349,10 +356,9 @@ export default function Game3D({
   const spawnLane = isCoop ? (local === 1 ? -W3.LANE : W3.LANE) : 0
 
   return (
-    <div className="game-shell font-display selection:bg-transparent">
+    <div className="game-shell font-display selection:bg-transparent" style={{ display: 'block' }}>
       <div
-        className="game-stage"
-        style={{ flex: '0 0 auto', background: env.backgroundStyle, touchAction: 'none', WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none', WebkitTapHighlightColor: 'transparent' }}
+        style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: env.backgroundStyle, touchAction: 'none', WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none', WebkitTapHighlightColor: 'transparent' }}
         onContextMenu={(e) => e.preventDefault()}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -371,7 +377,13 @@ export default function Game3D({
               toneMapping: THREE.NoToneMapping,
             }}
             camera={{ fov: CAMERA3D.fov, near: CAMERA3D.near, far: CAMERA3D.far, position: [spawnLane, W3.START_Y, 0.22] }}
-            onCreated={({ camera }) => aimCamera3(camera, spawnLane, W3.START_Y, 0)}
+            onCreated={({ gl, camera, size }) => {
+              if (size.width < 2 || size.height < 2) {
+                const parent = gl.domElement.parentElement
+                gl.setSize(parent?.clientWidth || window.innerWidth, parent?.clientHeight || window.innerHeight, false)
+              }
+              frameCamera(camera, isCoop, spawnLane, W3.START_Y, W3.START_Y, 0)
+            }}
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
           >
             <Scene3D

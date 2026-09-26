@@ -36,6 +36,9 @@ export type RunAssets = {
    * face looks at the camera without wrapping around the flange.
    */
   capFace: THREE.Texture
+  /** Local flyer. In solo this is the only character. */
+  self: THREE.Texture
+  /** Teammate. Same texture as `self` outside co-op. */
   character: THREE.Texture
   coin: THREE.Texture
   gift: THREE.Texture
@@ -53,13 +56,27 @@ function horizonColor(backgroundStyle: string): THREE.Color {
  * Builds every texture a 3D run needs from the player's currently equipped
  * pipe design and character. Returns null until they are ready.
  */
-export function useRunAssets(environment: Obstacle, charId: string, equipped: Record<string, string>) {
+function characterTexture(charId: string, equipped: Record<string, string>) {
+  return svgToTexture(
+    <CharacterComposite charId={charId} equipped={equipped} fitScale={measureFitScale(charId, equipped)} />,
+    { width: 512, height: 512 },
+  )
+}
+
+export function useRunAssets(
+  environment: Obstacle,
+  selfId: string,
+  selfEquipped: Record<string, string>,
+  mateId: string,
+  mateEquipped: Record<string, string>,
+) {
   const [assets, setAssets] = useState<RunAssets | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   // Equipped accessories arrive as an object; key on its contents so a new
   // object with the same items does not rebuild every texture.
-  const equippedKey = JSON.stringify(equipped)
+  const selfKey = JSON.stringify(selfEquipped)
+  const mateKey = JSON.stringify(mateEquipped)
 
   useEffect(() => {
     let cancelled = false
@@ -68,28 +85,33 @@ export function useRunAssets(environment: Obstacle, charId: string, equipped: Re
     setError(null)
 
     const { Piece, Cap } = environment
+    const selfGear = JSON.parse(selfKey) as Record<string, string>
+    const mateGear = JSON.parse(mateKey) as Record<string, string>
+    const sameFlyer = selfId === mateId && selfKey === mateKey
     Promise.all([
       svgToTexture(<Piece />, { width: 512, height: 1024, repeatX: 1 }),
       // Flat, no wrap — the face must stay undistorted on a front-facing plate.
       svgToTexture(<Cap />, { width: 1024, height: 384 }),
-      svgToTexture(<CharacterComposite charId={charId} equipped={JSON.parse(equippedKey)} fitScale={measureFitScale(charId, JSON.parse(equippedKey))} />, {
-        width: 512,
-        height: 512,
-      }),
+      characterTexture(selfId, selfGear),
+      sameFlyer ? Promise.resolve(null) : characterTexture(mateId, mateGear),
       svgToTexture(<CoinArt />, { width: 256, height: 256 }),
       svgToTexture(<GiftIcon />, { width: 256, height: 256 }),
     ])
-      .then(([shaft, capFace, character, coin, gift]) => {
+      .then(([shaft, capFace, self, mateOrNull, coin, gift]) => {
+        const character = mateOrNull ?? self
+        const textures = [shaft, capFace, self, coin, gift]
+        if (mateOrNull) textures.push(mateOrNull)
         if (cancelled) {
-          ;[shaft, capFace, character, coin, gift].forEach((texture) => texture.dispose())
+          textures.forEach((texture) => texture.dispose())
           return
         }
-        built.push(shaft, capFace, character, coin, gift)
+        built.push(...textures)
         const horizon = horizonColor(environment.backgroundStyle)
         const swatch = new THREE.Color(environment.swatch)
         setAssets({
           shaft,
           capFace,
+          self,
           character,
           coin,
           gift,
@@ -106,7 +128,7 @@ export function useRunAssets(environment: Obstacle, charId: string, equipped: Re
       cancelled = true
       built.forEach((texture) => texture.dispose())
     }
-  }, [environment, charId, equippedKey])
+  }, [environment, selfId, mateId, selfKey, mateKey])
 
   return { assets, error }
 }

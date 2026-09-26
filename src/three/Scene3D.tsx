@@ -6,6 +6,10 @@ import type { RunAssets } from './useRunAssets'
 
 export const CAMERA3D = { fov: 68, near: 0.12, far: 140 } as const
 export const CAM_Z = 0.22
+/** Both flyers sit on the hit-test plane. Pillars move through this Z. */
+const BIRD_Z = 0
+/** Co-op camera sits behind that plane so both sprites stay in frame. */
+const COOP_CAM_Z = 4.4
 
 const PIPE_POOL = 7
 const COIN_POOL = 10
@@ -35,6 +39,25 @@ export function aimCamera3(camera: THREE.Camera, x: number, y: number, pitch: nu
   camera.position.set(x, y, CAM_Z)
   camera.up.set(0, 1, 0)
   camera.lookAt(x, y + Math.sin(pitch) * LOOK_DIST, -Math.cos(pitch) * LOOK_DIST)
+}
+
+/** Solo stays first-person. Co-op looks from behind the pair, with no lead offset. */
+export function frameCamera(
+  camera: THREE.Camera,
+  coop: boolean,
+  myLane: number,
+  myY: number,
+  otherY: number,
+  pitch: number,
+) {
+  if (!coop) {
+    aimCamera3(camera, myLane, myY, pitch)
+    return
+  }
+  const y = (myY + otherY) / 2
+  camera.position.set(myLane * 0.2, y + 0.45, COOP_CAM_Z)
+  camera.up.set(0, 1, 0)
+  camera.lookAt(0, y + Math.sin(pitch) * LOOK_DIST, -Math.cos(pitch) * LOOK_DIST)
 }
 
 export default function Scene3D({
@@ -127,19 +150,25 @@ export default function Scene3D({
       return { mesh, mat }
     })
 
-    const mateMat = keep(
-      new THREE.MeshBasicMaterial({
-        map: assets.character,
-        transparent: true,
-        alphaTest: 0.04,
-        side: THREE.DoubleSide,
-        depthTest: false,
-      }),
-    )
-    const mate = new THREE.Mesh(bodyGeo, mateMat)
-    mate.visible = false
-    mate.renderOrder = 2
-    root.add(mate)
+    const makeBird = (map: THREE.Texture) => {
+      const mat = keep(
+        new THREE.MeshBasicMaterial({
+          map,
+          transparent: true,
+          alphaTest: 0.2,
+          opacity: 1,
+          side: THREE.DoubleSide,
+          depthTest: true,
+          depthWrite: true,
+        }),
+      )
+      const mesh = new THREE.Mesh(bodyGeo, mat)
+      mesh.visible = false
+      root.add(mesh)
+      return mesh
+    }
+    const self = makeBird(assets.self)
+    const mate = makeBird(assets.character)
 
     const groundTex = keep(makeGround(assets.groundColors))
     groundTex.repeat.set(1, 80)
@@ -166,7 +195,7 @@ export default function Scene3D({
     }
     root.add(city)
 
-    return { root, pipes, coins, chests, mate, groundTex, dispose: () => trash.forEach((t) => t.dispose()) }
+    return { root, pipes, coins, chests, self, mate, groundTex, dispose: () => trash.forEach((t) => t.dispose()) }
   }, [assets])
 
   const badges = useRef(new Map<number, THREE.CanvasTexture>())
@@ -179,8 +208,9 @@ export default function Scene3D({
 
   useLayoutEffect(() => {
     const myY = local === 1 ? world.y1 : world.y2
+    const otherY = local === 1 ? world.y2 : world.y1
     const myLane = coop ? (local === 1 ? -W3.LANE : W3.LANE) : 0
-    aimCamera3(camera, myLane, myY, pitchRef.current)
+    frameCamera(camera, coop, myLane, myY, otherY, pitchRef.current)
   }, [camera, coop, local, world, pitchRef])
 
   const looted = useRef(new WeakMap<Coin3, number>())
@@ -189,12 +219,8 @@ export default function Scene3D({
     const dt = Math.min(rawDt, 0.033)
     const time = state.clock.elapsedTime
 
-    const myY = local === 1 ? world.y1 : world.y2
-    const otherY = local === 1 ? world.y2 : world.y1
     const myLane = coop ? (local === 1 ? -W3.LANE : W3.LANE) : 0
     const otherLane = -myLane
-
-    aimCamera3(camera, myLane, myY, pitchRef.current)
 
     if (simulate && activeRef.current && !world.over) {
       const ev = step3(world, dt, coop)
@@ -271,10 +297,17 @@ export default function Scene3D({
       slot.mesh.quaternion.copy(camera.quaternion)
     })
 
-    // Own body is never drawn. Co-op shows only the teammate, same Z, offset on X.
-    scene.mate.visible = coop && !world.over
-    if (scene.mate.visible) {
-      scene.mate.position.set(otherLane, otherY, CAM_Z)
+    // Both flyers share the hit-test plane. Pillars occlude them by real depth.
+    const posedY = local === 1 ? world.y1 : world.y2
+    const posedOther = local === 1 ? world.y2 : world.y1
+    frameCamera(camera, coop, myLane, posedY, posedOther, pitchRef.current)
+    const showBirds = coop && !world.over
+    scene.self.visible = showBirds
+    scene.mate.visible = showBirds
+    if (showBirds) {
+      scene.self.position.set(myLane, posedY, BIRD_Z)
+      scene.mate.position.set(otherLane, posedOther, BIRD_Z)
+      scene.self.quaternion.copy(camera.quaternion)
       scene.mate.quaternion.copy(camera.quaternion)
     }
   })
@@ -315,7 +348,8 @@ function makeBadge(n: number) {
   ctx.strokeStyle = '#111'
   ctx.lineWidth = 5
   ctx.beginPath()
-  ctx.roundRect(6, 6, 52, 52, 12)
+  if (typeof ctx.roundRect === 'function') ctx.roundRect(6, 6, 52, 52, 12)
+  else ctx.rect(6, 6, 52, 52)
   ctx.fill()
   ctx.stroke()
   ctx.fillStyle = '#111'
