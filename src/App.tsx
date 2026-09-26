@@ -385,7 +385,7 @@ export default function App() {
             )
           })}
         </div>
-        <HScroll className="gap-4 pb-2 px-1 lg:px-14">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
           {filteredCharacters.map((char) => {
             const isOwned = owned.includes(char.id)
             const isSelected = selected === char.id
@@ -394,7 +394,7 @@ export default function App() {
             const need = char.cardsNeeded ?? 0
             const have = need > 0 ? Math.min(cards[char.id] ?? 0, need) : 0
             return (
-              <article key={char.id} className={`shrink-0 w-44 rounded-[32px] p-5 transition-all ${isSelected ? 'bg-[#352554] border-2 border-[#6ee7a8]' : 'bg-[#2a1c42] border-2 border-transparent'}`}>
+              <article key={char.id} className={`rounded-[32px] p-5 transition-all ${isSelected ? 'bg-[#352554] border-2 border-[#6ee7a8]' : 'bg-[#2a1c42] border-2 border-transparent'}`}>
                 <div className="flex justify-between items-center mb-2"><span className="text-[9px] font-black uppercase px-2 py-0.5 rounded" style={{ color: color, backgroundColor: `${color}20` }}>{char.rarity}</span></div>
                 <div className="flex-1 flex justify-center py-4">
                   <div className="h-20 w-20">
@@ -419,7 +419,7 @@ export default function App() {
               </article>
             )
           })}
-        </HScroll>
+        </div>
       </section>
 
       <section ref={themesSectionRef} className="max-w-7xl mx-auto mt-12 mb-10">
