@@ -38,7 +38,8 @@ body {
 /*
   Mobile: stage fills the viewport. Entity sizes live in Game.tsx
   (uniform scale + screen-pixel physics) — no letterbox strip.
-  Desktop (md+): unchanged framed 960×620 window.
+  Desktop (>1024px / lg+): unchanged framed 960×620 window.
+  Tablets and iPads (768–1024px) use the same fullscreen stage as phones.
 */
 .game-shell {
   position: fixed;
@@ -83,7 +84,7 @@ body {
   right: max(1rem, env(safe-area-inset-right));
 }
 
-@media (min-width: 768px) {
+@media (min-width: 1025px) {
   .game-stage {
     width: min(56rem, 100vw, calc(90vh * 960 / 620));
     width: min(56rem, 100vw, calc(90dvh * 960 / 620));

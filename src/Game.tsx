@@ -45,19 +45,24 @@ const CHEST_PICKUP_RADIUS = 82
 
 type PlayView = { w: number; h: number; scale: number; xScale: number }
 
+/** Phones, iPads, and any portrait viewport — not the framed desktop box. */
+function isMobilePlayfield(viewportW: number, viewportH: number) {
+  return viewportW <= 1024 || viewportH > viewportW
+}
+
 /**
  * Screen-pixel playfield. Sprites/gaps/gravity share one uniform `scale`
- * (same multiplier on width and height — never stretch). Portrait maps the
- * 620-tall design onto the phone so pillars stay thick; landscape/desktop
- * uses width/960 so the framed 960×620 stage is unchanged.
+ * (same multiplier on width and height — never stretch). Phones/iPads and
+ * any portrait viewport map the 620-tall design onto the screen so pillars
+ * stay thick. Laptop/desktop (>1024px landscape) uses width/960 so the
+ * framed 960×620 stage is unchanged.
  */
-function computePlayView(frameW: number, frameH: number): PlayView {
+function computePlayView(frameW: number, frameH: number, viewportW = frameW, viewportH = frameH): PlayView {
   const w = Math.max(1, frameW)
   const h = Math.max(1, frameH)
   const xScale = w / GAME_WIDTH
   const yScale = h / GAME_HEIGHT
-  const portrait = h / w > GAME_HEIGHT / GAME_WIDTH + 0.04
-  const scale = portrait ? yScale : xScale
+  const scale = isMobilePlayfield(viewportW, viewportH) ? yScale : xScale
   return { w, h, scale, xScale }
 }
 
@@ -456,7 +461,7 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
       const w = el?.clientWidth || window.innerWidth
       const h = el?.clientHeight || window.innerHeight
       if (w < 8 || h < 8) return
-      const next = computePlayView(w, h)
+      const next = computePlayView(w, h, window.innerWidth, window.innerHeight)
       const prev = metricsRef.current
       if (prev.w > 8 && (Math.abs(prev.w - next.w) > 0.5 || Math.abs(prev.h - next.h) > 0.5)) {
         const kx = next.w / prev.w
@@ -828,10 +833,10 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
 
         <div className="game-hud">
           <div className="flex flex-col gap-2 sm:flex-row">
-            <div key={coinPulse} className="coin-hud-pop bg-[#170d24]/90 border border-white/10 px-4 py-2 md:px-6 md:py-3 rounded-2xl flex items-center"><span className="text-xl md:text-2xl font-black text-[#ffe6a3]">🪙 {coinsHudV}</span></div>
-            <div key={`chest-hud-${chestPulse}`} className="coin-hud-pop bg-[#170d24]/90 border border-white/10 px-4 py-2 md:px-6 md:py-3 rounded-2xl flex items-center"><span className="text-xl md:text-2xl font-black text-[#ffd24d]">🎁 {chestsHudV}</span></div>
+            <div key={coinPulse} className="coin-hud-pop bg-[#170d24]/90 border border-white/10 px-4 py-2 lg:px-6 lg:py-3 rounded-2xl flex items-center"><span className="text-xl lg:text-2xl font-black text-[#ffe6a3]">🪙 {coinsHudV}</span></div>
+            <div key={`chest-hud-${chestPulse}`} className="coin-hud-pop bg-[#170d24]/90 border border-white/10 px-4 py-2 lg:px-6 lg:py-3 rounded-2xl flex items-center"><span className="text-xl lg:text-2xl font-black text-[#ffd24d]">🎁 {chestsHudV}</span></div>
           </div>
-          <div className="text-5xl md:text-8xl font-black text-white drop-shadow-lg">{scoreV}</div>
+          <div className="text-5xl lg:text-8xl font-black text-white drop-shadow-lg">{scoreV}</div>
         </div>
 
         {countLabel && phase === 'playing' && (
