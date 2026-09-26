@@ -49,8 +49,8 @@ function bodyHitbox(cx: number, cy: number) {
   }
 }
 
-function hitboxOutOfBounds(box: { top: number; bottom: number }) {
-  return box.top < 0 || box.bottom > GAME_HEIGHT
+function hitboxOutOfBounds(box: { top: number; bottom: number }, worldH: number) {
+  return box.top < 0 || box.bottom > worldH
 }
 
 function hitboxHitsPipe(box: { left: number; right: number; top: number; bottom: number }, pipeX: number, gapTop: number, gapBottom: number) {
@@ -211,8 +211,11 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
   const [offerRevive, setOfferRevive] = useState(false)
   const [reviveBusy, setReviveBusy] = useState(false)
   const [reviveError, setReviveError] = useState<string | null>(null)
+  const [view, setView] = useState({ scale: 1, worldH: GAME_HEIGHT })
   const [, forceReactRender] = useState(0)
   const rerender = useCallback(() => forceReactRender(n => (n + 1) % 1_000_000), [])
+  const frameRef = useRef<HTMLDivElement>(null)
+  const viewHeightRef = useRef(GAME_HEIGHT)
 
   const countdownRef = useRef(isCoop)   // true while the 3-2-1-GO overlay blocks play
   const settledRef = useRef(false)      // guarantees the run settles exactly once
@@ -408,6 +411,28 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
     }
   }, [])
 
+  useEffect(() => {
+    const el = frameRef.current
+    if (!el) return
+    const apply = () => {
+      const w = el.clientWidth
+      const h = el.clientHeight
+      if (w < 8 || h < 8) return
+      const scale = w / GAME_WIDTH
+      const worldH = Math.max(GAME_HEIGHT, h / scale)
+      viewHeightRef.current = worldH
+      if (internalScore.current === 0 && worldPipes.current.length === 0) {
+        p1Y.current = worldH / 2
+        p2Y.current = worldH / 2
+      }
+      setView({ scale, worldH })
+    }
+    apply()
+    const ro = new ResizeObserver(apply)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
   // --- PAUSE ON TAB HIDE (prevents unfair deaths & saves battery) ---
   useEffect(() => {
     const onVis = () => {
@@ -425,6 +450,10 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
     if (phase !== 'playing' || !simulates) return
     let active = true
     const prng = LCG(isCoop ? (coopConfig.gameSeed || 1) : (Date.now() >>> 0) || 1)
+    if (worldPipes.current.length === 0 && internalScore.current === 0) {
+      p1Y.current = viewHeightRef.current / 2
+      p2Y.current = viewHeightRef.current / 2
+    }
     lastTimeRef.current = 0
 
     const tick = (now: number) => {
@@ -463,7 +492,8 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
       if (!lastPipe || lastPipe.x < GAME_WIDTH - PHYSICS.PIPE_SPACING) {
         const gap = gapForScore(score, mode)
         const margin = gap / 2 + 60
-        const gapCenterY = margin + prng() * (GAME_HEIGHT - margin * 2)
+        const worldH = viewHeightRef.current
+        const gapCenterY = margin + prng() * (worldH - margin * 2)
         worldPipes.current.push({ x: GAME_WIDTH + PHYSICS.PIPE_WIDTH, gapCenterY, gap, hasPassedScores: false })
         const cx = GAME_WIDTH + PHYSICS.PIPE_WIDTH + PHYSICS.PIPE_SPACING / 2
         if (mode === 'CHALLENGE') {
@@ -517,7 +547,7 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
       let hit = false
       const p1Box = bodyHitbox(P1_X, p1Y.current)
       const p2Box = isCoop ? bodyHitbox(P2_X, p2Y.current) : null
-      if (hitboxOutOfBounds(p1Box) || (p2Box && hitboxOutOfBounds(p2Box))) hit = true
+      if (hitboxOutOfBounds(p1Box, viewHeightRef.current) || (p2Box && hitboxOutOfBounds(p2Box, viewHeightRef.current))) hit = true
       worldPipes.current.forEach(p => {
         const top = p.gapCenterY - p.gap / 2
         const bottom = p.gapCenterY + p.gap / 2
@@ -582,8 +612,9 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
   const coinsToRender = s ? s.coins.map(c => ({ x: c.x, y: c.y, looted: c.l })) : worldCoins.current.map(c => ({ x: c.x, y: c.y, looted: c.looted1 || c.looted2 }))
   const chestsToRender = s ? (s.chests ?? []).map(k => ({ x: k.x, y: k.y, taken: k.t })) : worldChests.current.map(k => ({ x: k.x, y: k.y, taken: k.taken }))
   const waitingForHost = guest && !netSnap.current && phase === 'playing'
-  const ghostWpct = (PHYSICS.GHOST_SIZE / GAME_WIDTH) * 100
-  const ghostHpct = (PHYSICS.GHOST_SIZE / GAME_HEIGHT) * 100
+  const ghostSize = PHYSICS.GHOST_SIZE
+  const worldH = view.worldH
+  const worldScale = view.scale
 
   // Bounce + glow the coin counter whenever the total ticks up.
   const prevCoinsRef = useRef(coinsHudV)
@@ -655,32 +686,28 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
 
   return (
     <div className="game-shell font-display selection:bg-transparent">
-      <div className={`game-stage bg-[#11091c] ${shake ? 'screen-shake' : ''}`} style={{ background: activeEnvironment.backgroundStyle, WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none', WebkitTapHighlightColor: 'transparent' }} onContextMenu={(e) => e.preventDefault()} onPointerDown={(e) => { e.preventDefault(); dispatchJumpAction() }}>
+      <div ref={frameRef} className={`game-stage bg-[#11091c] ${shake ? 'screen-shake' : ''}`} style={{ background: activeEnvironment.backgroundStyle, WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none', WebkitTapHighlightColor: 'transparent' }} onContextMenu={(e) => e.preventDefault()} onPointerDown={(e) => { e.preventDefault(); dispatchJumpAction() }}>
         {activeEnvironment.Background && <activeEnvironment.Background />}
 
+        <div className="game-world" style={{ width: GAME_WIDTH, height: worldH, transform: `scale(${worldScale})` }}>
         {pipesToRender.map((p, i) => {
           const gapTop = p.gapCenterY - p.gap / 2
           const gapBottom = p.gapCenterY + p.gap / 2
           const capW = PHYSICS.PIPE_WIDTH * 1.14
           const capH = capW * (44 / 120) // keep cap-face proportions
-          const shaftLeftPct = (p.x / GAME_WIDTH) * 100
-          const shaftWidthPct = (PHYSICS.PIPE_WIDTH / GAME_WIDTH) * 100
-          const capLeftPct = ((p.x + PHYSICS.PIPE_WIDTH / 2 - capW / 2) / GAME_WIDTH) * 100
-          const capWidthPct = (capW / GAME_WIDTH) * 100
-          const capHeightPct = (capH / GAME_HEIGHT) * 100
           const fill = { width: '100%', height: '100%', display: 'block' } as const
           return (
             <div key={`pipe-${i}`}>
-              <div className="absolute" style={{ left: `${shaftLeftPct}%`, top: 0, width: `${shaftWidthPct}%`, height: `${(gapTop / GAME_HEIGHT) * 100}%` }}>
+              <div className="absolute" style={{ left: p.x, top: 0, width: PHYSICS.PIPE_WIDTH, height: Math.max(0, gapTop) }}>
                 <activeEnvironment.Piece style={fill} />
               </div>
-              <div className="absolute" style={{ left: `${capLeftPct}%`, top: `${((gapTop - capH) / GAME_HEIGHT) * 100}%`, width: `${capWidthPct}%`, height: `${capHeightPct}%` }}>
+              <div className="absolute" style={{ left: p.x + PHYSICS.PIPE_WIDTH / 2 - capW / 2, top: gapTop - capH, width: capW, height: capH }}>
                 <activeEnvironment.Cap style={fill} />
               </div>
-              <div className="absolute" style={{ left: `${shaftLeftPct}%`, top: `${(gapBottom / GAME_HEIGHT) * 100}%`, width: `${shaftWidthPct}%`, bottom: 0 }}>
+              <div className="absolute" style={{ left: p.x, top: gapBottom, width: PHYSICS.PIPE_WIDTH, bottom: 0 }}>
                 <activeEnvironment.Piece style={fill} />
               </div>
-              <div className="absolute" style={{ left: `${capLeftPct}%`, top: `${(gapBottom / GAME_HEIGHT) * 100}%`, width: `${capWidthPct}%`, height: `${capHeightPct}%` }}>
+              <div className="absolute" style={{ left: p.x + PHYSICS.PIPE_WIDTH / 2 - capW / 2, top: gapBottom, width: capW, height: capH }}>
                 <activeEnvironment.Cap style={fill} />
               </div>
             </div>
@@ -688,7 +715,7 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
         })}
 
         {coinsToRender.map((c, i) => (
-          <div key={`coin-${i}`} className="absolute pointer-events-none z-[15]" style={{ left: `${(c.x / GAME_WIDTH) * 100}%`, top: `${(c.y / GAME_HEIGHT) * 100}%`, width: '34px', height: '34px', opacity: c.looted ? 0 : 1, transform: `translate(-50%, -50%) scale(${c.looted ? 1.8 : 1})`, transition: 'opacity 0.25s ease, transform 0.25s ease' }}>
+          <div key={`coin-${i}`} className="absolute pointer-events-none z-[15]" style={{ left: c.x, top: c.y, width: 34, height: 34, opacity: c.looted ? 0 : 1, transform: `translate(-50%, -50%) scale(${c.looted ? 1.8 : 1})`, transition: 'opacity 0.25s ease, transform 0.25s ease' }}>
             <svg viewBox="0 0 24 24" width="34" height="34" className="drop-shadow-[0_0_6px_rgba(255,207,77,0.7)]">
               <circle cx="12" cy="12" r="11" fill="#f5a623" />
               <circle cx="12" cy="12" r="8.5" fill="#ffcf4d" />
@@ -703,7 +730,7 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
           <div
             key={`chest-${i}`}
             className={`absolute pointer-events-none z-[16] ${k.taken ? '' : 'float-slow gift-drop-glow'}`}
-            style={{ left: `${(k.x / GAME_WIDTH) * 100}%`, top: `${(k.y / GAME_HEIGHT) * 100}%`, width: '68px', height: '68px', opacity: k.taken ? 0 : 1, transform: `translate(-50%, -50%) scale(${k.taken ? 1.9 : 1})`, transition: 'opacity 0.3s ease, transform 0.3s ease' }}
+            style={{ left: k.x, top: k.y, width: 68, height: 68, opacity: k.taken ? 0 : 1, transform: `translate(-50%, -50%) scale(${k.taken ? 1.9 : 1})`, transition: 'opacity 0.3s ease, transform 0.3s ease' }}
           >
             <GiftArt sparkle className="h-full w-full" />
           </div>
@@ -711,29 +738,30 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
 
         {/* Coin pickup feedback: floating "+1" with a little star burst. */}
         {particles.map((p) => (
-          <div key={`pk-${p.id}`} className="coin-pop absolute pointer-events-none z-[25] font-black text-[#6ee7a8] drop-shadow-[0_0_6px_rgba(110,231,168,0.7)]" style={{ left: `${(p.x / GAME_WIDTH) * 100}%`, top: `${(p.y / GAME_HEIGHT) * 100}%`, fontSize: '20px' }}>
+          <div key={`pk-${p.id}`} className="coin-pop absolute pointer-events-none z-[25] font-black text-[#6ee7a8] drop-shadow-[0_0_6px_rgba(110,231,168,0.7)]" style={{ left: p.x, top: p.y, fontSize: 20 }}>
             <span className="relative">+1<span className="absolute -right-3 -top-2 text-[#ffd24d] text-xs">✦</span></span>
           </div>
         ))}
 
         {isCoop && (
-          <div className={`absolute pointer-events-none z-20 ${dying ? 'death-fall' : ''}`} style={{ left: `${(P2_X / GAME_WIDTH) * 100}%`, top: `${(p2yV / GAME_HEIGHT) * 100}%`, width: `${ghostWpct}%`, height: `${ghostHpct}%`, overflow: 'visible', transform: `translate(-50%, -50%) rotate(${Math.max(-30, Math.min(80, p2vV * 4))}deg)`, opacity: !dying && cdV > 0 ? 0.35 : 1 }}>
+          <div className={`absolute pointer-events-none z-20 ${dying ? 'death-fall' : ''}`} style={{ left: P2_X, top: p2yV, width: ghostSize, height: ghostSize, overflow: 'visible', transform: `translate(-50%, -50%) rotate(${Math.max(-30, Math.min(80, p2vV * 4))}deg)`, opacity: !dying && cdV > 0 ? 0.35 : 1 }}>
             <CharacterView charId={p2CharData.id} className="h-full w-full drop-shadow-xl" />
             <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-[#8ec5ff] text-[#170d24] px-2 py-0.5 rounded-md text-[10px] font-black uppercase">P2</div>
           </div>
         )}
 
-        <div className={`absolute pointer-events-none z-30 ${dying ? 'death-fall' : ''}`} style={{ left: `${(P1_X / GAME_WIDTH) * 100}%`, top: `${(p1yV / GAME_HEIGHT) * 100}%`, width: `${ghostWpct}%`, height: `${ghostHpct}%`, overflow: 'visible', transform: `translate(-50%, -50%) rotate(${Math.max(-30, Math.min(80, p1vV * 4))}deg)`, opacity: !dying && cdV > 0 ? 0.35 : 1 }}>
+        <div className={`absolute pointer-events-none z-30 ${dying ? 'death-fall' : ''}`} style={{ left: P1_X, top: p1yV, width: ghostSize, height: ghostSize, overflow: 'visible', transform: `translate(-50%, -50%) rotate(${Math.max(-30, Math.min(80, p1vV * 4))}deg)`, opacity: !dying && cdV > 0 ? 0.35 : 1 }}>
           <CharacterView charId={p1CharData.id} className="h-full w-full drop-shadow-xl" />
           {isCoop && <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-[#6ee7a8] text-[#170d24] px-2 py-0.5 rounded-md text-[10px] font-black uppercase">P1</div>}
         </div>
+        </div>
 
-        <div className="absolute flex justify-between items-start pointer-events-none z-40" style={{ top: 'max(2rem, env(safe-area-inset-top))', left: 'max(2rem, env(safe-area-inset-left))', right: 'max(2rem, env(safe-area-inset-right))' }}>
+        <div className="game-hud">
           <div className="flex flex-col gap-2 sm:flex-row">
-            <div key={coinPulse} className="coin-hud-pop bg-[#170d24]/90 border border-white/10 px-6 py-3 rounded-2xl flex items-center"><span className="text-2xl font-black text-[#ffe6a3]">🪙 {coinsHudV}</span></div>
-            <div key={`chest-hud-${chestPulse}`} className="coin-hud-pop bg-[#170d24]/90 border border-white/10 px-6 py-3 rounded-2xl flex items-center"><span className="text-2xl font-black text-[#ffd24d]">🎁 {chestsHudV}</span></div>
+            <div key={coinPulse} className="coin-hud-pop bg-[#170d24]/90 border border-white/10 px-4 py-2 md:px-6 md:py-3 rounded-2xl flex items-center"><span className="text-xl md:text-2xl font-black text-[#ffe6a3]">🪙 {coinsHudV}</span></div>
+            <div key={`chest-hud-${chestPulse}`} className="coin-hud-pop bg-[#170d24]/90 border border-white/10 px-4 py-2 md:px-6 md:py-3 rounded-2xl flex items-center"><span className="text-xl md:text-2xl font-black text-[#ffd24d]">🎁 {chestsHudV}</span></div>
           </div>
-          <div className="text-8xl font-black text-white drop-shadow-lg">{scoreV}</div>
+          <div className="text-5xl md:text-8xl font-black text-white drop-shadow-lg">{scoreV}</div>
         </div>
 
         {countLabel && phase === 'playing' && (
