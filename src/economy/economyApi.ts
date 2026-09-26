@@ -1,7 +1,7 @@
 import { supabase } from '../lib/supabase'
 import { env } from '../lib/env'
 import { diamondReviveCost, isAdRevive } from '../../shared/economy'
-import { setState } from '../store'
+import { bankRelayReward, creditExistingSenderSave, setState } from '../store'
 
 export { diamondReviveCost, isAdRevive }
 
@@ -127,4 +127,57 @@ export async function authorizeDouble<T extends { coins: number; diamonds: numbe
   }
   if (scaled.diamonds > 0) setState((s) => ({ diamonds: s.diamonds + scaled.diamonds }))
   return { ok: true, payout: scaled }
+}
+
+export type RelayPayout = {
+  relayId: string
+  senderId: string
+  coins: number
+  diamonds: number
+  chests: number
+  score: number
+}
+
+/** Stores the finished relay so the original player is paid on their next sign-in. */
+export async function creditRelaySender(payout: RelayPayout): Promise<void> {
+  const coins = Math.max(0, Math.floor(payout.coins) || 0)
+  const diamonds = Math.max(0, Math.floor(payout.diamonds) || 0)
+  const chests = Math.max(0, Math.floor(payout.chests) || 0)
+  creditExistingSenderSave(payout.senderId, coins, diamonds)
+  try {
+    await postJson('/api/economy/relay', {
+      relayId: payout.relayId,
+      senderId: payout.senderId,
+      coins,
+      diamonds,
+      chests,
+      score: Math.max(0, Math.floor(payout.score) || 0),
+    })
+  } catch {
+    // The friend still keeps their own payout if the server is offline.
+  }
+}
+
+/** Pulls unclaimed relay rewards into the signed-in player's save. */
+export async function claimRelayRewards(): Promise<void> {
+  try {
+    const { ok, data } = await postJson<{
+      coins: number
+      diamonds: number
+      chests: number
+      walletDiamonds: number | null
+    }>('/api/economy/relay/claim', {})
+    if (!ok || !data) return
+    bankRelayReward({
+      coins: Math.max(0, Math.floor(data.coins) || 0),
+      diamonds: 0,
+      chests: Math.max(0, Math.floor(data.chests) || 0),
+    })
+    if (typeof data.walletDiamonds === 'number') setState({ diamonds: data.walletDiamonds })
+    else if ((data.diamonds ?? 0) > 0) {
+      bankRelayReward({ coins: 0, diamonds: data.diamonds, chests: 0 })
+    }
+  } catch {
+    // Claim retries the next time this account signs in.
+  }
 }

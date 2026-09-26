@@ -20,7 +20,8 @@ import { useIsRecoveringPassword } from './auth/recoveryState'
 import { disableGuestPlay, useGuestPlay } from './auth/guestPlay'
 import { useProfile } from './profile/useProfile'
 import { CREDENTIAL_RULES } from './lib/validation'
-import { syncWallet } from './economy/economyApi'
+import { claimRelayRewards, syncWallet } from './economy/economyApi'
+import { parseRelay, type RelayRun } from './relay'
 
 export type { CoopConfig }
 
@@ -120,7 +121,12 @@ export default function App() {
   useEffect(() => {
     if (sessionStatus === 'LOADING') return
     setActiveSession(userId, email)
-    if (sessionStatus === 'AUTHENTICATED') void syncWallet(getDiamonds())
+    if (sessionStatus === 'AUTHENTICATED') {
+      void (async () => {
+        await syncWallet(getDiamonds())
+        await claimRelayRewards()
+      })()
+    }
   }, [sessionStatus, userId, email])
 
   const gameState = useGameState()
@@ -128,6 +134,8 @@ export default function App() {
   const { selectCharacter, buyCharacter, selectObstacle, buyObstacle, addCoins } = useActions()
   const lvl = levelInfo(xp)
 
+  const [relayOffer] = useState<RelayRun | null>(() => parseRelay(window.location.search))
+  const [activeRelay, setActiveRelay] = useState<RelayRun | null>(null)
   const [activeEngineMode, setActiveEngineMode] = useState<'NORMAL' | 'CHALLENGE' | 'COOP'>('NORMAL')
   const [gameSessionId, setGameSessionId] = useState(Date.now()) 
   const [isGameEngineMounted, setIsGameEngineMounted] = useState(false)
@@ -195,7 +203,16 @@ export default function App() {
   const wheelReady = spinRemaining(lastSpin) <= 0
 
   const handleGameLaunch = (mode: 'NORMAL'|'CHALLENGE'|'COOP') => {
+    setActiveRelay(null)
     setActiveEngineMode(mode); setGameSessionId(Date.now()); setIsGameEngineMounted(true)
+  }
+
+  const startRelay = () => {
+    if (!relayOffer) return
+    setActiveRelay(relayOffer)
+    setActiveEngineMode('NORMAL')
+    setGameSessionId(Date.now())
+    setIsGameEngineMounted(true)
   }
 
   // --- REȚEA PEERJS ---
@@ -355,8 +372,17 @@ export default function App() {
               </div>
               {viewMode === '3D' && <span className="text-white/40 text-[11px] font-bold">First-person · swipe to look</span>}
             </div>
+            {relayOffer && (
+              <p className="mb-3 text-center text-sm font-bold text-[#ffd24d] lg:text-left">
+                A friend sent their run. Continue from score {relayOffer.startScore} with their character and theme.
+              </p>
+            )}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 w-full">
-              <button onClick={() => handleGameLaunch('NORMAL')} className="bg-[#6ee7a8] text-[#170d24] py-4 rounded-2xl font-black uppercase">▶ Solo</button>
+              {relayOffer ? (
+                <button onClick={startRelay} className="bg-[#ffd24d] text-[#170d24] py-4 rounded-2xl font-black uppercase">▶ Continue</button>
+              ) : (
+                <button onClick={() => handleGameLaunch('NORMAL')} className="bg-[#6ee7a8] text-[#170d24] py-4 rounded-2xl font-black uppercase">▶ Solo</button>
+              )}
               <button onClick={() => setCustomizeId(activeChar.id)} className="bg-[#412e61] text-white py-4 rounded-2xl font-black uppercase">👕 Custom</button>
               <button onClick={() => setShowChallengePopup(true)} className="bg-[#ff7ad9] text-[#170d24] py-4 rounded-2xl font-black uppercase">🔥 Hard</button>
               <button onClick={() => { setNetworkRole(null); setCoopConfig(prev => ({ ...prev, p1Char: selected, p2Char: selected })); setShowNetworkLobby(true); }} className="bg-[#8ec5ff] text-[#170d24] py-4 rounded-2xl font-black uppercase">🤝 Co-op</button>
@@ -521,7 +547,7 @@ export default function App() {
       {isGameEngineMounted && (
         <div className="fixed inset-0 z-[1000] bg-black">
            <ErrorBoundary onClose={() => { setIsGameEngineMounted(false); terminateNetworkSession(); }}>
-             {viewMode === '3D' ? (
+             {viewMode === '3D' && !activeRelay ? (
                <Suspense fallback={<div className="fixed inset-0 grid place-items-center bg-black"><p className="text-2xl font-black text-white animate-pulse">Loading 3D…</p></div>}>
                  <Game3D
                    key={gameSessionId}
@@ -533,7 +559,7 @@ export default function App() {
                  />
                </Suspense>
              ) : (
-             <Game key={gameSessionId} mode={activeEngineMode} coopConfig={coopConfig} connection={dataConnection.current} onClose={() => { setIsGameEngineMounted(false); terminateNetworkSession(); }} onReplay={() => { if(activeEngineMode==='COOP' && dataConnection.current){dataConnection.current.send({opCode:'REPLAY_REQ'})}; setGameSessionId(Date.now()) }} />
+             <Game key={gameSessionId} mode={activeEngineMode} coopConfig={coopConfig} connection={dataConnection.current} relay={activeRelay} accountId={userId} onClose={() => { setIsGameEngineMounted(false); setActiveRelay(null); terminateNetworkSession(); }} onReplay={() => { if(activeEngineMode==='COOP' && dataConnection.current){dataConnection.current.send({opCode:'REPLAY_REQ'})}; setGameSessionId(Date.now()) }} />
              )}
            </ErrorBoundary>
         </div>

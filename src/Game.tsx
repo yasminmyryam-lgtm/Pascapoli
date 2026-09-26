@@ -8,6 +8,8 @@ import type { CoopConfig } from './coopConfig'
 import { playRewardedAdSequence } from './ads/adService'
 import { authorizeDouble, chargeReviveDiamonds, isAdRevive } from './economy/economyApi'
 import ReviveOffer from './economy/ReviveOffer'
+import { creditRelaySender } from './economy/economyApi'
+import { buildRelayUrl, newRelayId, type RelayRun } from './relay'
 
 const GAME_WIDTH = 960
 const GAME_HEIGHT = 620
@@ -218,19 +220,21 @@ function makeConfetti(n: number, colors: string[]) {
   })
 }
 
-export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose, onReplay }: { mode: 'NORMAL'|'CHALLENGE'|'COOP', coopConfig: CoopConfig, connection: any, onClose: () => void, onReplay: () => void }) {
+export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose, onReplay, relay = null, accountId = null }: { mode: 'NORMAL'|'CHALLENGE'|'COOP', coopConfig: CoopConfig, connection: any, onClose: () => void, onReplay: () => void, relay?: RelayRun | null, accountId?: string | null }) {
   const { obstacle, selected, equipped, diamonds } = useGameState()
   const { recordGame } = useActions()
 
   const isCoop = mode === 'COOP'
   const isHost = coopConfig.isHost
+  const relayTheme = relay && OBSTACLES.some((o) => o.id === relay.themeId) ? relay.themeId : null
+  const relayChar = relay && CHARACTERS.some((c) => c.id === relay.charId) ? relay.charId : null
   // Host privilege: in co-op both players render the HOST's equipped background.
-  const activeBgId = isCoop ? (coopConfig.hostBg || obstacle) : obstacle
+  const activeBgId = relayTheme ?? (isCoop ? (coopConfig.hostBg || obstacle) : obstacle)
   const activeEnvironment = OBSTACLES.find((o) => o.id === activeBgId) ?? OBSTACLES[0]
   const guest = isCoop && !isHost      // guest = pure renderer, host is authoritative
   const simulates = !guest             // solo + host run the physics engine
 
-  const p1CharId = isCoop ? coopConfig.p1Char : selected
+  const p1CharId = relayChar ?? (isCoop ? coopConfig.p1Char : selected)
   // Guest is always P2: use local `selected` so a host sync cannot overwrite their sprite.
   const p2CharId = isCoop && !isHost ? selected : coopConfig.p2Char
   const p1CharData = CHARACTERS.find(c => c.id === p1CharId) ?? CHARACTERS[0]
@@ -250,6 +254,7 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
   const [particles, setParticles] = useState<{ id: number; x: number; y: number }[]>([])
   const [sharing, setSharing] = useState(false)
   const [shareMsg, setShareMsg] = useState<string | null>(null)
+  const [relayToast, setRelayToast] = useState<string | null>(null)
   const [coinPulse, setCoinPulse] = useState(0)   // bumps to retrigger the HUD bounce
   const [chestPulse, setChestPulse] = useState(0) // same, for the chest counter
   const [offerRevive, setOfferRevive] = useState(false)
@@ -282,8 +287,8 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
   const pipesSpawned = useRef(0)
   const nextChestPipe = useRef(0)   // 0 = not rolled yet
 
-  const internalScore = useRef(0)
-  const internalCoins = useRef(0)
+  const internalScore = useRef(relay?.startScore ?? 0)
+  const internalCoins = useRef(relay?.startCoins ?? 0)
   const internalChests = useRef(0)
   const animationFrameId = useRef(0)
   const pausedRef = useRef(false)
@@ -296,6 +301,16 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
     settledRef.current = true
     const result = recordGame(score, collected, mode)
     setSummary(result)
+    if (relay && relay.senderId && relay.senderId !== accountId) {
+      void creditRelaySender({
+        relayId: relay.relayId,
+        senderId: relay.senderId,
+        coins: result.totalReward,
+        diamonds: 0,
+        chests,
+        score,
+      })
+    }
     if (chests > 0) {
       setPhase('unboxing')
       haptic([40, 30, 80])
@@ -304,7 +319,7 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
       haptic([50, 40, 90])
       sfx.gameOver()
     }
-  }, [recordGame, mode])
+  }, [recordGame, mode, relay, accountId])
 
   // Impact juice: screen shake + the ghost tumbling down before the panel slides in.
   const beginDeathSequence = useCallback((score: number, collected: number, chests: number) => {
@@ -734,6 +749,30 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
     </svg>`
   }
 
+  const shareRelayRun = async () => {
+    const senderId = accountId || 'guest'
+    const url = buildRelayUrl({
+      relayId: newRelayId(),
+      senderId,
+      charId: p1CharData.id,
+      themeId: activeEnvironment.id,
+      startScore: finalRef.current.score,
+      startCoins: finalRef.current.collected,
+    })
+    try {
+      await navigator.clipboard.writeText(url)
+    } catch {
+      const input = document.createElement('textarea')
+      input.value = url
+      document.body.appendChild(input)
+      input.select()
+      document.execCommand('copy')
+      input.remove()
+    }
+    setRelayToast('Link copied! Send it to a friend.')
+    window.setTimeout(() => setRelayToast(null), 2600)
+  }
+
   const shareScore = async () => {
     if (sharing) return
     setSharing(true); setShareMsg(null)
@@ -915,6 +954,12 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
               <button onClick={onReplay} className="flex-1 rounded-[32px] bg-[#6ee7a8] py-5 text-xl font-black uppercase text-[#170d24] shadow-lg">REPLAY</button>
               <button onClick={onClose} className="flex-1 rounded-[32px] bg-white/10 py-5 text-xl font-black uppercase text-white border border-white/20">MENU</button>
             </div>
+            {!isCoop && (
+              <button onClick={() => { void shareRelayRun() }} className="mt-4 w-full max-w-xl rounded-[28px] bg-[#ffd24d] py-4 text-lg font-black uppercase text-[#170d24] shadow-lg">
+                Share to Friend to Continue
+              </button>
+            )}
+            {relayToast && <p className="mt-3 text-sm font-black text-[#ffd24d]">{relayToast}</p>}
             <button onClick={shareScore} disabled={sharing} className="mt-4 w-full max-w-xl rounded-[28px] bg-[#8ec5ff]/15 border border-[#8ec5ff]/40 py-4 text-lg font-black uppercase text-[#8ec5ff] disabled:opacity-50 flex items-center justify-center gap-2">
               {sharing ? 'Generating…' : '📤 Share Score'}
             </button>

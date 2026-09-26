@@ -233,6 +233,57 @@ export function getDiamonds(): number {
   return state.diamonds
 }
 
+/** Adds a finished relay's coins, diamonds, and chest rolls to the live save. */
+export function bankRelayReward(payout: { coins: number; diamonds: number; chests: number }) {
+  const coins = Math.max(0, Math.min(200_000, Math.floor(payout.coins) || 0))
+  const diamonds = Math.max(0, Math.min(10_000, Math.floor(payout.diamonds) || 0))
+  const chests = Math.max(0, Math.min(50, Math.floor(payout.chests) || 0))
+  if (coins > 0 || diamonds > 0) {
+    setState((s) => ({
+      coins: s.coins + coins,
+      diamonds: s.diamonds + diamonds,
+    }))
+  }
+  for (let i = 0; i < chests; i++) grantOneChest()
+}
+
+function grantOneChest() {
+  const roll = rollLoot()
+  if (roll.kind === 'CHARACTER_CARD') {
+    const charId = roll.entry.id
+    const need = cardsRequired(charId)
+    setState((s) => {
+      const have = Math.min((s.cards[charId] ?? 0) + 1, need)
+      const cards = { ...s.cards, [charId]: have }
+      if (have >= need && !s.owned.includes(charId)) return { cards, owned: [...s.owned, charId] }
+      return { cards }
+    })
+    return
+  }
+  const accessoryId = roll.entry.id
+  setState((s) => {
+    if (s.cosmetics.includes(accessoryId)) return { coins: s.coins + roll.entry.dupeCoins }
+    return { cosmetics: [...s.cosmetics, accessoryId] }
+  })
+}
+
+/**
+ * Same-browser handoff: if the sender already has a save on this device,
+ * add the relay payout there. Never creates a new slot.
+ */
+export function creditExistingSenderSave(senderId: string, coins: number, diamonds: number) {
+  if (!senderId || senderId === activeSessionId || typeof localStorage === 'undefined') return
+  try {
+    const key = `${KEY}.${senderId}`
+    const raw = localStorage.getItem(key)
+    if (!raw) return
+    const parsed = JSON.parse(raw) as { coins?: number; diamonds?: number }
+    parsed.coins = Math.max(0, Math.floor(Number(parsed.coins) || 0) + Math.max(0, Math.floor(coins)))
+    parsed.diamonds = Math.max(0, Math.floor(Number(parsed.diamonds) || 0) + Math.max(0, Math.floor(diamonds)))
+    localStorage.setItem(key, JSON.stringify(parsed))
+  } catch {}
+}
+
 export function setState(patch: Partial<GameState> | ((s: GameState) => Partial<GameState>)) {
   state = { ...state, ...(typeof patch === 'function' ? patch(state) : patch) }; emit()
 }

@@ -167,6 +167,78 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
     return
   }
 
+  if (url.pathname === '/api/economy/relay') {
+    if (!db) {
+      json(res, 503, { error: 'Economy server is not configured' })
+      return
+    }
+    const senderId = String(body.senderId ?? '')
+    const relayId = String(body.relayId ?? '')
+    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    if (!uuid.test(senderId) || !uuid.test(relayId)) {
+      json(res, 400, { error: 'Relay needs a real account id.' })
+      return
+    }
+    const coins = Math.max(0, Math.min(200_000, Math.floor(Number(body.coins) || 0)))
+    const diamonds = Math.max(0, Math.min(10_000, Math.floor(Number(body.diamonds) || 0)))
+    const chests = Math.max(0, Math.min(50, Math.floor(Number(body.chests) || 0)))
+    const score = Math.max(0, Math.min(99_999, Math.floor(Number(body.score) || 0)))
+    const { count } = await db
+      .from('relay_rewards')
+      .select('id', { count: 'exact', head: true })
+      .eq('sender_id', senderId)
+      .eq('claimed', false)
+    if ((count ?? 0) >= 20) {
+      json(res, 429, { error: 'That player already has pending relay rewards.' })
+      return
+    }
+    const { error } = await db.from('relay_rewards').insert({
+      id: relayId,
+      sender_id: senderId,
+      coins,
+      diamonds,
+      chests,
+      score,
+      claimed: false,
+    })
+    if (error && !String(error.message).toLowerCase().includes('duplicate')) {
+      json(res, 500, { error: 'Could not store the relay reward.' })
+      return
+    }
+    json(res, 200, { ok: true, coins, diamonds, chests, score })
+    return
+  }
+
+  if (url.pathname === '/api/economy/relay/claim') {
+    if (!user || !db) {
+      json(res, 503, { error: 'Economy server is not configured' })
+      return
+    }
+    const { data: rows, error } = await db
+      .from('relay_rewards')
+      .select('id, coins, diamonds, chests')
+      .eq('sender_id', user.id)
+      .eq('claimed', false)
+    if (error || !rows) {
+      json(res, 200, { ok: true, coins: 0, diamonds: 0, chests: 0, walletDiamonds: null })
+      return
+    }
+    const coins = rows.reduce((sum, row) => sum + Math.max(0, Math.floor(Number(row.coins) || 0)), 0)
+    const diamonds = rows.reduce((sum, row) => sum + Math.max(0, Math.floor(Number(row.diamonds) || 0)), 0)
+    const chests = rows.reduce((sum, row) => sum + Math.max(0, Math.floor(Number(row.chests) || 0)), 0)
+    if (rows.length > 0) {
+      await db.from('relay_rewards').update({ claimed: true }).in('id', rows.map((row) => row.id))
+    }
+    let walletDiamonds: number | null = null
+    if (diamonds > 0) {
+      const wallet = await readWallet(db, user.id)
+      walletDiamonds = wallet.diamonds + diamonds
+      await writeWallet(db, user.id, walletDiamonds, true)
+    }
+    json(res, 200, { ok: true, coins, diamonds, chests, walletDiamonds })
+    return
+  }
+
   json(res, 404, { error: 'Not found' })
 }
 
