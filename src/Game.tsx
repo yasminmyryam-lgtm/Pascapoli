@@ -38,14 +38,58 @@ function gapForScore(score: number, mode: 'NORMAL' | 'CHALLENGE' | 'COOP') {
   return Math.max(PHYSICS.MIN_GAP, base - Math.min(score * 3.5, base - PHYSICS.MIN_GAP))
 }
 
-/** Collision AABB strictly inside the visual sprite. Bottom inset is larger to skip the ground shadow. */
-function bodyHitbox(cx: number, cy: number) {
-  const half = PHYSICS.GHOST_SIZE / 2
+/** Chests only appear deep into a run, then keep re-appearing on the same cadence. */
+const CHEST_MIN_PIPE = 20
+const CHEST_MAX_PIPE = 30
+const CHEST_PICKUP_RADIUS = 82
+
+type PlayView = { w: number; h: number; scale: number; xScale: number }
+
+/**
+ * Screen-pixel playfield. Sprites/gaps/gravity share one uniform `scale`
+ * (same multiplier on width and height — never stretch). Portrait maps the
+ * 620-tall design onto the phone so pillars stay thick; landscape/desktop
+ * uses width/960 so the framed 960×620 stage is unchanged.
+ */
+function computePlayView(frameW: number, frameH: number): PlayView {
+  const w = Math.max(1, frameW)
+  const h = Math.max(1, frameH)
+  const xScale = w / GAME_WIDTH
+  const yScale = h / GAME_HEIGHT
+  const portrait = h / w > GAME_HEIGHT / GAME_WIDTH + 0.04
+  const scale = portrait ? yScale : xScale
+  return { w, h, scale, xScale }
+}
+
+function scaledUnits(v: PlayView) {
+  const { w, h, scale, xScale } = v
   return {
-    left: cx - half + PHYSICS.HITBOX_INSET_X,
-    right: cx + half - PHYSICS.HITBOX_INSET_X,
-    top: cy - half + PHYSICS.HITBOX_INSET_TOP,
-    bottom: cy + half - PHYSICS.HITBOX_INSET_BOTTOM,
+    w, h, scale, xScale,
+    ghost: PHYSICS.GHOST_SIZE * scale,
+    pipeW: PHYSICS.PIPE_WIDTH * scale,
+    spacing: PHYSICS.PIPE_SPACING * xScale,
+    gravity: PHYSICS.GRAVITY * scale,
+    flap: PHYSICS.FLAP_POWER * scale,
+    terminal: PHYSICS.TERMINAL_VELOCITY * scale,
+    magnet: PHYSICS.COIN_MAGNET_RADIUS * scale,
+    chestR: CHEST_PICKUP_RADIUS * scale,
+    insetX: PHYSICS.HITBOX_INSET_X * scale,
+    insetTop: PHYSICS.HITBOX_INSET_TOP * scale,
+    insetBottom: PHYSICS.HITBOX_INSET_BOTTOM * scale,
+    spawnPad: 60 * scale,
+    coinSpreadX: 44 * xScale,
+    coinSpreadY: 40 * scale,
+  }
+}
+
+/** Collision AABB strictly inside the visual sprite. Bottom inset is larger to skip the ground shadow. */
+function bodyHitbox(cx: number, cy: number, u: ReturnType<typeof scaledUnits>) {
+  const half = u.ghost / 2
+  return {
+    left: cx - half + u.insetX,
+    right: cx + half - u.insetX,
+    top: cy - half + u.insetTop,
+    bottom: cy + half - u.insetBottom,
   }
 }
 
@@ -53,15 +97,10 @@ function hitboxOutOfBounds(box: { top: number; bottom: number }, worldH: number)
   return box.top < 0 || box.bottom > worldH
 }
 
-function hitboxHitsPipe(box: { left: number; right: number; top: number; bottom: number }, pipeX: number, gapTop: number, gapBottom: number) {
-  if (box.right <= pipeX || box.left >= pipeX + PHYSICS.PIPE_WIDTH) return false
+function hitboxHitsPipe(box: { left: number; right: number; top: number; bottom: number }, pipeX: number, pipeW: number, gapTop: number, gapBottom: number) {
+  if (box.right <= pipeX || box.left >= pipeX + pipeW) return false
   return box.top < gapTop || box.bottom > gapBottom
 }
-
-/** Chests only appear deep into a run, then keep re-appearing on the same cadence. */
-const CHEST_MIN_PIPE = 20
-const CHEST_MAX_PIPE = 30
-const CHEST_PICKUP_RADIUS = 82
 
 function haptic(pattern: number | number[]) {
   try { if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(pattern) } catch {}
@@ -211,11 +250,11 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
   const [offerRevive, setOfferRevive] = useState(false)
   const [reviveBusy, setReviveBusy] = useState(false)
   const [reviveError, setReviveError] = useState<string | null>(null)
-  const [view, setView] = useState({ scale: 1, worldH: GAME_HEIGHT })
+  const [view, setView] = useState<PlayView>({ w: GAME_WIDTH, h: GAME_HEIGHT, scale: 1, xScale: 1 })
   const [, forceReactRender] = useState(0)
   const rerender = useCallback(() => forceReactRender(n => (n + 1) % 1_000_000), [])
   const frameRef = useRef<HTMLDivElement>(null)
-  const viewHeightRef = useRef(GAME_HEIGHT)
+  const metricsRef = useRef<PlayView>(view)
 
   const countdownRef = useRef(isCoop)   // true while the 3-2-1-GO overlay blocks play
   const settledRef = useRef(false)      // guarantees the run settles exactly once
@@ -307,7 +346,7 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
       switch (packet.opCode) {
         case 'FLAP':
           // Host authoritative: guest's flap moves P2 on the host sim.
-          if (isHost) p2Vel.current = PHYSICS.FLAP_POWER
+          if (isHost) p2Vel.current = PHYSICS.FLAP_POWER * metricsRef.current.scale
           break
         case 'STATE':
           // Guest renders whatever the host sends — zero drift.
@@ -374,8 +413,8 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
       setOfferRevive(false)
       teamLivesCount.current = 1
       damageCooldownFrames.current = 150
-      p1Vel.current = PHYSICS.FLAP_POWER
-      if (isCoop) p2Vel.current = PHYSICS.FLAP_POWER
+      p1Vel.current = PHYSICS.FLAP_POWER * metricsRef.current.scale
+      if (isCoop) p2Vel.current = PHYSICS.FLAP_POWER * metricsRef.current.scale
       lastTimeRef.current = 0
       if (isCoop) send({ opCode: 'REVIVE' })
     } finally {
@@ -388,7 +427,7 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
     if (phase === 'over' || phase === 'unboxing' || offerRevive || pausedRef.current) return
     haptic(8); sfx.flap()
     if (guest) { send({ opCode: 'FLAP' }); return }   // guest only sends intent
-    p1Vel.current = PHYSICS.FLAP_POWER                 // solo / host control P1 locally
+    p1Vel.current = PHYSICS.FLAP_POWER * metricsRef.current.scale
   }, [phase, guest, send])
 
   useEffect(() => {
@@ -413,24 +452,48 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
 
   useEffect(() => {
     const el = frameRef.current
-    if (!el) return
     const apply = () => {
-      const w = el.clientWidth
-      const h = el.clientHeight
+      const w = el?.clientWidth || window.innerWidth
+      const h = el?.clientHeight || window.innerHeight
       if (w < 8 || h < 8) return
-      const scale = w / GAME_WIDTH
-      const worldH = Math.max(GAME_HEIGHT, h / scale)
-      viewHeightRef.current = worldH
-      if (internalScore.current === 0 && worldPipes.current.length === 0) {
-        p1Y.current = worldH / 2
-        p2Y.current = worldH / 2
+      const next = computePlayView(w, h)
+      const prev = metricsRef.current
+      if (prev.w > 8 && (Math.abs(prev.w - next.w) > 0.5 || Math.abs(prev.h - next.h) > 0.5)) {
+        const kx = next.w / prev.w
+        const ky = next.h / prev.h
+        const ks = next.scale / prev.scale
+        p1Y.current *= ky
+        p2Y.current *= ky
+        p1Vel.current *= ks
+        p2Vel.current *= ks
+        worldPipes.current.forEach((p) => {
+          p.x *= kx
+          p.gapCenterY *= ky
+          p.gap *= ky
+        })
+        worldCoins.current.forEach((c) => {
+          c.x *= kx
+          c.y *= ky
+        })
+        worldChests.current.forEach((k) => {
+          k.x *= kx
+          k.y *= ky
+        })
+      } else if (internalScore.current === 0 && worldPipes.current.length === 0) {
+        p1Y.current = next.h / 2
+        p2Y.current = next.h / 2
       }
-      setView({ scale, worldH })
+      metricsRef.current = next
+      setView(next)
     }
     apply()
-    const ro = new ResizeObserver(apply)
-    ro.observe(el)
-    return () => ro.disconnect()
+    const ro = el ? new ResizeObserver(apply) : null
+    if (el) ro?.observe(el)
+    window.addEventListener('resize', apply)
+    return () => {
+      ro?.disconnect()
+      window.removeEventListener('resize', apply)
+    }
   }, [])
 
   // --- PAUSE ON TAB HIDE (prevents unfair deaths & saves battery) ---
@@ -451,8 +514,8 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
     let active = true
     const prng = LCG(isCoop ? (coopConfig.gameSeed || 1) : (Date.now() >>> 0) || 1)
     if (worldPipes.current.length === 0 && internalScore.current === 0) {
-      p1Y.current = viewHeightRef.current / 2
-      p2Y.current = viewHeightRef.current / 2
+      p1Y.current = metricsRef.current.h / 2
+      p2Y.current = metricsRef.current.h / 2
     }
     lastTimeRef.current = 0
 
@@ -475,12 +538,15 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
       lastTimeRef.current = now
 
       const score = internalScore.current
-      const speed = speedForScore(score, mode)
+      const u = scaledUnits(metricsRef.current)
+      const speed = speedForScore(score, mode) * u.xScale
+      const p1x = (P1_X / GAME_WIDTH) * u.w
+      const p2x = (P2_X / GAME_WIDTH) * u.w
 
-      p1Vel.current = Math.min(p1Vel.current + PHYSICS.GRAVITY * dt, PHYSICS.TERMINAL_VELOCITY)
+      p1Vel.current = Math.min(p1Vel.current + u.gravity * dt, u.terminal)
       p1Y.current += p1Vel.current * dt
       if (isCoop) {
-        p2Vel.current = Math.min(p2Vel.current + PHYSICS.GRAVITY * dt, PHYSICS.TERMINAL_VELOCITY)
+        p2Vel.current = Math.min(p2Vel.current + u.gravity * dt, u.terminal)
         p2Y.current += p2Vel.current * dt
       }
 
@@ -489,15 +555,15 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
       worldChests.current.forEach(k => k.x -= speed * dt)
 
       const lastPipe = worldPipes.current[worldPipes.current.length - 1]
-      if (!lastPipe || lastPipe.x < GAME_WIDTH - PHYSICS.PIPE_SPACING) {
-        const gap = gapForScore(score, mode)
-        const margin = gap / 2 + 60
-        const worldH = viewHeightRef.current
-        const gapCenterY = margin + prng() * (worldH - margin * 2)
-        worldPipes.current.push({ x: GAME_WIDTH + PHYSICS.PIPE_WIDTH, gapCenterY, gap, hasPassedScores: false })
-        const cx = GAME_WIDTH + PHYSICS.PIPE_WIDTH + PHYSICS.PIPE_SPACING / 2
+      if (!lastPipe || lastPipe.x < u.w - u.spacing) {
+        const gap = gapForScore(score, mode) * u.scale
+        const margin = gap / 2 + u.spawnPad
+        const span = Math.max(1, u.h - margin * 2)
+        const gapCenterY = margin + prng() * span
+        worldPipes.current.push({ x: u.w + u.pipeW, gapCenterY, gap, hasPassedScores: false })
+        const cx = u.w + u.pipeW + u.spacing / 2
         if (mode === 'CHALLENGE') {
-          worldCoins.current.push({ x: cx, y: gapCenterY, looted1: false, looted2: false }, { x: cx + 44, y: gapCenterY - 40, looted1: false, looted2: false })
+          worldCoins.current.push({ x: cx, y: gapCenterY, looted1: false, looted2: false }, { x: cx + u.coinSpreadX, y: gapCenterY - u.coinSpreadY, looted1: false, looted2: false })
         } else {
           worldCoins.current.push({ x: cx, y: gapCenterY, looted1: false, looted2: false })
         }
@@ -508,24 +574,24 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
           nextChestPipe.current = CHEST_MIN_PIPE + Math.floor(prng() * (CHEST_MAX_PIPE - CHEST_MIN_PIPE + 1))
         }
         if (pipesSpawned.current === nextChestPipe.current) {
-          worldChests.current.push({ x: cx + PHYSICS.PIPE_SPACING * 0.22, y: gapCenterY, taken: false })
+          worldChests.current.push({ x: cx + u.spacing * 0.22, y: gapCenterY, taken: false })
           nextChestPipe.current += CHEST_MIN_PIPE + Math.floor(prng() * (CHEST_MAX_PIPE - CHEST_MIN_PIPE + 1))
         }
       }
 
-      worldPipes.current = worldPipes.current.filter(p => p.x > -200)
-      worldCoins.current = worldCoins.current.filter(c => c.x > -200)
-      worldChests.current = worldChests.current.filter(k => k.x > -200)
+      worldPipes.current = worldPipes.current.filter(p => p.x > -u.pipeW * 2)
+      worldCoins.current = worldCoins.current.filter(c => c.x > -u.pipeW * 2)
+      worldChests.current = worldChests.current.filter(k => k.x > -u.pipeW * 2)
 
-      const checkX = isCoop ? Math.min(P1_X, P2_X) : P1_X
+      const checkX = isCoop ? Math.min(p1x, p2x) : p1x
       worldPipes.current.forEach(p => {
-        if (!p.hasPassedScores && p.x + PHYSICS.PIPE_WIDTH < checkX) { p.hasPassedScores = true; internalScore.current += 1; sfx.score() }
+        if (!p.hasPassedScores && p.x + u.pipeW < checkX) { p.hasPassedScores = true; internalScore.current += 1; sfx.score() }
       })
 
       let frameCoins = 0
       worldCoins.current.forEach(c => {
-        if (!c.looted1 && Math.hypot(P1_X - c.x, p1Y.current - c.y) < PHYSICS.COIN_MAGNET_RADIUS) { c.looted1 = true; frameCoins++; spawnPickup(c.x, c.y) }
-        if (isCoop && !c.looted2 && Math.hypot(P2_X - c.x, p2Y.current - c.y) < PHYSICS.COIN_MAGNET_RADIUS) { c.looted2 = true; frameCoins++; spawnPickup(c.x, c.y) }
+        if (!c.looted1 && Math.hypot(p1x - c.x, p1Y.current - c.y) < u.magnet) { c.looted1 = true; frameCoins++; spawnPickup(c.x, c.y) }
+        if (isCoop && !c.looted2 && Math.hypot(p2x - c.x, p2Y.current - c.y) < u.magnet) { c.looted2 = true; frameCoins++; spawnPickup(c.x, c.y) }
       })
       if (frameCoins > 0) { internalCoins.current += frameCoins; haptic(5); sfx.coin() }
 
@@ -533,8 +599,8 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
       worldChests.current.forEach(k => {
         if (k.taken) return
         const grabbed =
-          Math.hypot(P1_X - k.x, p1Y.current - k.y) < CHEST_PICKUP_RADIUS ||
-          (isCoop && Math.hypot(P2_X - k.x, p2Y.current - k.y) < CHEST_PICKUP_RADIUS)
+          Math.hypot(p1x - k.x, p1Y.current - k.y) < u.chestR ||
+          (isCoop && Math.hypot(p2x - k.x, p2Y.current - k.y) < u.chestR)
         if (grabbed) {
           k.taken = true
           internalChests.current += 1
@@ -545,14 +611,14 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
 
       // --- Collisions (bounds + pipes): padded body AABB, not the full sprite ---
       let hit = false
-      const p1Box = bodyHitbox(P1_X, p1Y.current)
-      const p2Box = isCoop ? bodyHitbox(P2_X, p2Y.current) : null
-      if (hitboxOutOfBounds(p1Box, viewHeightRef.current) || (p2Box && hitboxOutOfBounds(p2Box, viewHeightRef.current))) hit = true
+      const p1Box = bodyHitbox(p1x, p1Y.current, u)
+      const p2Box = isCoop ? bodyHitbox(p2x, p2Y.current, u) : null
+      if (hitboxOutOfBounds(p1Box, u.h) || (p2Box && hitboxOutOfBounds(p2Box, u.h))) hit = true
       worldPipes.current.forEach(p => {
         const top = p.gapCenterY - p.gap / 2
         const bottom = p.gapCenterY + p.gap / 2
-        if (hitboxHitsPipe(p1Box, p.x, top, bottom)) hit = true
-        if (p2Box && hitboxHitsPipe(p2Box, p.x, top, bottom)) hit = true
+        if (hitboxHitsPipe(p1Box, p.x, u.pipeW, top, bottom)) hit = true
+        if (p2Box && hitboxHitsPipe(p2Box, p.x, u.pipeW, top, bottom)) hit = true
       })
 
       if (hit && damageCooldownFrames.current <= 0) {
@@ -560,8 +626,8 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
         haptic(20); sfx.hit()
         if (teamLivesCount.current > 0) {
           damageCooldownFrames.current = 120
-          p1Vel.current = PHYSICS.FLAP_POWER * 0.7
-          if (isCoop) p2Vel.current = PHYSICS.FLAP_POWER * 0.7
+          p1Vel.current = u.flap * 0.7
+          if (isCoop) p2Vel.current = u.flap * 0.7
         } else {
           const payload = { score: internalScore.current, collected: Math.floor(internalCoins.current), chests: internalChests.current }
           if (isCoop) send({ opCode: 'DOWNED', payload })
@@ -573,12 +639,12 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
       // Broadcast authoritative state to the guest.
       if (isCoop) {
         const snap: Snap = {
-          p1Y: p1Y.current, p2Y: p2Y.current, p1V: p1Vel.current, p2V: p2Vel.current,
+          p1Y: p1Y.current / u.h, p2Y: p2Y.current / u.h, p1V: p1Vel.current / u.scale, p2V: p2Vel.current / u.scale,
           sc: internalScore.current, cc: Math.floor(internalCoins.current), cd: damageCooldownFrames.current,
           kc: internalChests.current,
-          pipes: worldPipes.current.map(p => ({ x: p.x, gc: p.gapCenterY, g: p.gap })),
-          coins: worldCoins.current.map(c => ({ x: c.x, y: c.y, l: c.looted1 || c.looted2 })),
-          chests: worldChests.current.map(k => ({ x: k.x, y: k.y, t: k.taken })),
+          pipes: worldPipes.current.map(p => ({ x: p.x / u.w, gc: p.gapCenterY / u.h, g: p.gap / u.h })),
+          coins: worldCoins.current.map(c => ({ x: c.x / u.w, y: c.y / u.h, l: c.looted1 || c.looted2 })),
+          chests: worldChests.current.map(k => ({ x: k.x / u.w, y: k.y / u.h, t: k.taken })),
         }
         send({ opCode: 'STATE', snap })
       }
@@ -599,22 +665,26 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
   }, [phase, simulates, isCoop, mode, P1_X, P2_X, beginDeathSequence, spawnPickup, send, coopConfig.gameSeed, rerender])
 
   // --- Resolve what to draw: guest reads the network snapshot, everyone else reads local refs ---
+  const u = scaledUnits(view)
   const s = guest ? netSnap.current : null
-  const p1yV = s ? s.p1Y : p1Y.current
-  const p1vV = s ? s.p1V : p1Vel.current
-  const p2yV = s ? s.p2Y : p2Y.current
-  const p2vV = s ? s.p2V : p2Vel.current
+  const p1yV = s ? s.p1Y * u.h : p1Y.current
+  const p1vV = s ? s.p1V * u.scale : p1Vel.current
+  const p2yV = s ? s.p2Y * u.h : p2Y.current
+  const p2vV = s ? s.p2V * u.scale : p2Vel.current
   const scoreV = s ? s.sc : internalScore.current
   const coinsHudV = s ? s.cc : Math.floor(internalCoins.current)
   const chestsHudV = s ? (s.kc ?? 0) : internalChests.current
   const cdV = s ? s.cd : damageCooldownFrames.current
-  const pipesToRender = s ? s.pipes.map(p => ({ x: p.x, gapCenterY: p.gc, gap: p.g })) : worldPipes.current
-  const coinsToRender = s ? s.coins.map(c => ({ x: c.x, y: c.y, looted: c.l })) : worldCoins.current.map(c => ({ x: c.x, y: c.y, looted: c.looted1 || c.looted2 }))
-  const chestsToRender = s ? (s.chests ?? []).map(k => ({ x: k.x, y: k.y, taken: k.t })) : worldChests.current.map(k => ({ x: k.x, y: k.y, taken: k.taken }))
+  const pipesToRender = s ? s.pipes.map(p => ({ x: p.x * u.w, gapCenterY: p.gc * u.h, gap: p.g * u.h })) : worldPipes.current
+  const coinsToRender = s ? s.coins.map(c => ({ x: c.x * u.w, y: c.y * u.h, looted: c.l })) : worldCoins.current.map(c => ({ x: c.x, y: c.y, looted: c.looted1 || c.looted2 }))
+  const chestsToRender = s ? (s.chests ?? []).map(k => ({ x: k.x * u.w, y: k.y * u.h, taken: k.t })) : worldChests.current.map(k => ({ x: k.x, y: k.y, taken: k.taken }))
   const waitingForHost = guest && !netSnap.current && phase === 'playing'
-  const ghostSize = PHYSICS.GHOST_SIZE
-  const worldH = view.worldH
-  const worldScale = view.scale
+  const ghostSize = u.ghost
+  const p1x = (P1_X / GAME_WIDTH) * u.w
+  const p2x = (P2_X / GAME_WIDTH) * u.w
+  const coinPx = 34 * u.scale
+  const giftPx = 68 * u.scale
+  const tilt = (vel: number) => Math.max(-30, Math.min(80, (vel / u.scale) * 4))
 
   // Bounce + glow the coin counter whenever the total ticks up.
   const prevCoinsRef = useRef(coinsHudV)
@@ -689,25 +759,25 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
       <div ref={frameRef} className={`game-stage bg-[#11091c] ${shake ? 'screen-shake' : ''}`} style={{ background: activeEnvironment.backgroundStyle, WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none', WebkitTapHighlightColor: 'transparent' }} onContextMenu={(e) => e.preventDefault()} onPointerDown={(e) => { e.preventDefault(); dispatchJumpAction() }}>
         {activeEnvironment.Background && <activeEnvironment.Background />}
 
-        <div className="game-world" style={{ width: GAME_WIDTH, height: worldH, transform: `scale(${worldScale})` }}>
+        <div className="game-world">
         {pipesToRender.map((p, i) => {
           const gapTop = p.gapCenterY - p.gap / 2
           const gapBottom = p.gapCenterY + p.gap / 2
-          const capW = PHYSICS.PIPE_WIDTH * 1.14
+          const capW = u.pipeW * 1.14
           const capH = capW * (44 / 120) // keep cap-face proportions
           const fill = { width: '100%', height: '100%', display: 'block' } as const
           return (
             <div key={`pipe-${i}`}>
-              <div className="absolute" style={{ left: p.x, top: 0, width: PHYSICS.PIPE_WIDTH, height: Math.max(0, gapTop) }}>
+              <div className="absolute" style={{ left: p.x, top: 0, width: u.pipeW, height: Math.max(0, gapTop) }}>
                 <activeEnvironment.Piece style={fill} />
               </div>
-              <div className="absolute" style={{ left: p.x + PHYSICS.PIPE_WIDTH / 2 - capW / 2, top: gapTop - capH, width: capW, height: capH }}>
+              <div className="absolute" style={{ left: p.x + u.pipeW / 2 - capW / 2, top: gapTop - capH, width: capW, height: capH }}>
                 <activeEnvironment.Cap style={fill} />
               </div>
-              <div className="absolute" style={{ left: p.x, top: gapBottom, width: PHYSICS.PIPE_WIDTH, bottom: 0 }}>
+              <div className="absolute" style={{ left: p.x, top: gapBottom, width: u.pipeW, bottom: 0 }}>
                 <activeEnvironment.Piece style={fill} />
               </div>
-              <div className="absolute" style={{ left: p.x + PHYSICS.PIPE_WIDTH / 2 - capW / 2, top: gapBottom, width: capW, height: capH }}>
+              <div className="absolute" style={{ left: p.x + u.pipeW / 2 - capW / 2, top: gapBottom, width: capW, height: capH }}>
                 <activeEnvironment.Cap style={fill} />
               </div>
             </div>
@@ -715,8 +785,8 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
         })}
 
         {coinsToRender.map((c, i) => (
-          <div key={`coin-${i}`} className="absolute pointer-events-none z-[15]" style={{ left: c.x, top: c.y, width: 34, height: 34, opacity: c.looted ? 0 : 1, transform: `translate(-50%, -50%) scale(${c.looted ? 1.8 : 1})`, transition: 'opacity 0.25s ease, transform 0.25s ease' }}>
-            <svg viewBox="0 0 24 24" width="34" height="34" className="drop-shadow-[0_0_6px_rgba(255,207,77,0.7)]">
+          <div key={`coin-${i}`} className="absolute pointer-events-none z-[15]" style={{ left: c.x, top: c.y, width: coinPx, height: coinPx, opacity: c.looted ? 0 : 1, transform: `translate(-50%, -50%) scale(${c.looted ? 1.8 : 1})`, transition: 'opacity 0.25s ease, transform 0.25s ease' }}>
+            <svg viewBox="0 0 24 24" width={coinPx} height={coinPx} className="drop-shadow-[0_0_6px_rgba(255,207,77,0.7)]">
               <circle cx="12" cy="12" r="11" fill="#f5a623" />
               <circle cx="12" cy="12" r="8.5" fill="#ffcf4d" />
               <circle cx="12" cy="12" r="5" fill="none" stroke="#f5a623" strokeWidth="1.4" />
@@ -730,7 +800,7 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
           <div
             key={`chest-${i}`}
             className={`absolute pointer-events-none z-[16] ${k.taken ? '' : 'float-slow gift-drop-glow'}`}
-            style={{ left: k.x, top: k.y, width: 68, height: 68, opacity: k.taken ? 0 : 1, transform: `translate(-50%, -50%) scale(${k.taken ? 1.9 : 1})`, transition: 'opacity 0.3s ease, transform 0.3s ease' }}
+            style={{ left: k.x, top: k.y, width: giftPx, height: giftPx, opacity: k.taken ? 0 : 1, transform: `translate(-50%, -50%) scale(${k.taken ? 1.9 : 1})`, transition: 'opacity 0.3s ease, transform 0.3s ease' }}
           >
             <GiftArt sparkle className="h-full w-full" />
           </div>
@@ -738,19 +808,19 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
 
         {/* Coin pickup feedback: floating "+1" with a little star burst. */}
         {particles.map((p) => (
-          <div key={`pk-${p.id}`} className="coin-pop absolute pointer-events-none z-[25] font-black text-[#6ee7a8] drop-shadow-[0_0_6px_rgba(110,231,168,0.7)]" style={{ left: p.x, top: p.y, fontSize: 20 }}>
+          <div key={`pk-${p.id}`} className="coin-pop absolute pointer-events-none z-[25] font-black text-[#6ee7a8] drop-shadow-[0_0_6px_rgba(110,231,168,0.7)]" style={{ left: p.x, top: p.y, fontSize: 20 * u.scale }}>
             <span className="relative">+1<span className="absolute -right-3 -top-2 text-[#ffd24d] text-xs">✦</span></span>
           </div>
         ))}
 
         {isCoop && (
-          <div className={`absolute pointer-events-none z-20 ${dying ? 'death-fall' : ''}`} style={{ left: P2_X, top: p2yV, width: ghostSize, height: ghostSize, overflow: 'visible', transform: `translate(-50%, -50%) rotate(${Math.max(-30, Math.min(80, p2vV * 4))}deg)`, opacity: !dying && cdV > 0 ? 0.35 : 1 }}>
+          <div className={`absolute pointer-events-none z-20 ${dying ? 'death-fall' : ''}`} style={{ left: p2x, top: p2yV, width: ghostSize, height: ghostSize, overflow: 'visible', transform: `translate(-50%, -50%) rotate(${tilt(p2vV)}deg)`, opacity: !dying && cdV > 0 ? 0.35 : 1 }}>
             <CharacterView charId={p2CharData.id} className="h-full w-full drop-shadow-xl" />
             <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-[#8ec5ff] text-[#170d24] px-2 py-0.5 rounded-md text-[10px] font-black uppercase">P2</div>
           </div>
         )}
 
-        <div className={`absolute pointer-events-none z-30 ${dying ? 'death-fall' : ''}`} style={{ left: P1_X, top: p1yV, width: ghostSize, height: ghostSize, overflow: 'visible', transform: `translate(-50%, -50%) rotate(${Math.max(-30, Math.min(80, p1vV * 4))}deg)`, opacity: !dying && cdV > 0 ? 0.35 : 1 }}>
+        <div className={`absolute pointer-events-none z-30 ${dying ? 'death-fall' : ''}`} style={{ left: p1x, top: p1yV, width: ghostSize, height: ghostSize, overflow: 'visible', transform: `translate(-50%, -50%) rotate(${tilt(p1vV)}deg)`, opacity: !dying && cdV > 0 ? 0.35 : 1 }}>
           <CharacterView charId={p1CharData.id} className="h-full w-full drop-shadow-xl" />
           {isCoop && <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-[#6ee7a8] text-[#170d24] px-2 py-0.5 rounded-md text-[10px] font-black uppercase">P1</div>}
         </div>

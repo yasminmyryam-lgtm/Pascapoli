@@ -36,9 +36,8 @@ body {
 }
 
 /*
-  Mobile: stage fills the screen. The inner .game-world is 960 world-units
-  wide, uniformly scaled, and grows taller than 620 so portrait is usable
-  without stretching sprites or letterboxing a landscape strip.
+  Mobile: stage fills the viewport. Entity sizes live in Game.tsx
+  (uniform scale + screen-pixel physics) — no letterbox strip.
   Desktop (md+): unchanged framed 960×620 window.
 */
 .game-shell {
@@ -60,6 +59,7 @@ body {
 .game-stage {
   position: relative;
   width: 100%;
+  width: 100vw;
   height: 100%;
   height: 100dvh;
   overflow: hidden;
@@ -68,9 +68,7 @@ body {
 
 .game-world {
   position: absolute;
-  top: 0;
-  left: 0;
-  transform-origin: 0 0;
+  inset: 0;
 }
 
 .game-hud {
