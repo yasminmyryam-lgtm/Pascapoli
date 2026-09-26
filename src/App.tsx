@@ -21,7 +21,7 @@ import { disableGuestPlay, useGuestPlay } from './auth/guestPlay'
 import { useProfile } from './profile/useProfile'
 import { CREDENTIAL_RULES } from './lib/validation'
 import { claimRelayRewards, syncWallet } from './economy/economyApi'
-import { parseRelay, relayBlocks, type RelayRun } from './relay'
+import { captureRelay, clearPendingRelay, relayBlocks, type RelayRun } from './relay'
 
 export type { CoopConfig }
 
@@ -134,7 +134,7 @@ export default function App() {
   const { selectCharacter, buyCharacter, selectObstacle, buyObstacle, addCoins } = useActions()
   const lvl = levelInfo(xp)
 
-  const [relayOffer] = useState<RelayRun | null>(() => parseRelay(window.location.search))
+  const [pendingRelay, setPendingRelay] = useState<RelayRun | null>(() => captureRelay(window.location.search))
   const [activeRelay, setActiveRelay] = useState<RelayRun | null>(null)
   const relayHandled = useRef(false)
   const [activeEngineMode, setActiveEngineMode] = useState<'NORMAL' | 'CHALLENGE' | 'COOP'>('NORMAL')
@@ -208,23 +208,31 @@ export default function App() {
     setActiveEngineMode(mode); setGameSessionId(Date.now()); setIsGameEngineMounted(true)
   }
 
-  // A relay link skips the menu once the account is known. The URL is cleared
-  // immediately so a refresh cannot replay the same handoff.
+  const canEnterApp = sessionStatus === 'AUTHENTICATED' || isGuestPlay
+
+  // Start the relay only after login or Play as Guest. The saved copy does not
+  // depend on the address bar surviving the auth screen.
   useEffect(() => {
-    if (!relayOffer || relayHandled.current) return
-    if (sessionStatus !== 'AUTHENTICATED' || !userId || isRecoveringPassword) return
-    relayHandled.current = true
-    if (relayBlocks(relayOffer, userId)) {
+    if (!pendingRelay || relayHandled.current || isRecoveringPassword) return
+    if (sessionStatus === 'LOADING' || !canEnterApp) return
+    if (userId && relayBlocks(pendingRelay, userId)) {
+      relayHandled.current = true
+      clearPendingRelay()
+      setPendingRelay(null)
       window.history.replaceState({}, document.title, '/')
       window.alert('You have already participated in this relay chain! Send it to someone new.')
       return
     }
-    setActiveRelay(relayOffer)
+    const run = pendingRelay
+    relayHandled.current = true
+    setActiveRelay(run)
     setActiveEngineMode('NORMAL')
     setGameSessionId(Date.now())
     setIsGameEngineMounted(true)
+    clearPendingRelay()
+    setPendingRelay(null)
     window.history.replaceState({}, document.title, '/')
-  }, [relayOffer, sessionStatus, userId, isRecoveringPassword])
+  }, [pendingRelay, sessionStatus, userId, canEnterApp, isRecoveringPassword])
 
   // --- REȚEA PEERJS ---
   const initializeHostServer = () => {
@@ -330,17 +338,32 @@ export default function App() {
   if (isRecoveringPassword) return <Auth />
   if (sessionStatus === 'ANONYMOUS' && !isGuestPlay) return <Auth />
 
-  const enteringRelay = Boolean(
-    relayOffer && sessionStatus === 'AUTHENTICATED' && userId && !relayBlocks(relayOffer, userId) && !activeRelay && !relayHandled.current,
-  )
+  const closeRelay = () => {
+    setIsGameEngineMounted(false)
+    setActiveRelay(null)
+    setPendingRelay(null)
+    clearPendingRelay()
+    terminateNetworkSession()
+  }
+
+  if (activeRelay || (pendingRelay && canEnterApp && !(userId && relayBlocks(pendingRelay, userId)))) {
+    return (
+      <div className="fixed inset-0 z-[1000] bg-black">
+        {activeRelay ? (
+          <ErrorBoundary onClose={closeRelay}>
+            <Game key={gameSessionId} mode="NORMAL" coopConfig={coopConfig} connection={null} relay={activeRelay} accountId={userId} onClose={closeRelay} onReplay={closeRelay} />
+          </ErrorBoundary>
+        ) : (
+          <div className="grid h-full place-items-center bg-[#11091c]">
+            <p className="text-4xl font-black text-white">Continue the game</p>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <main className="min-h-screen w-full bg-[#1b1429] font-display pb-32" style={{ background: 'radial-gradient(150% 100% at 50% 0%, #2f1d4a 0%, #11091c 100%)' }}>
-      {enteringRelay && (
-        <div className="fixed inset-0 z-[1100] grid place-items-center bg-[#11091c]">
-          <p className="text-4xl font-black text-white">Continue the game</p>
-        </div>
-      )}
       <header className="w-full sticky top-0 z-40 bg-[#1b1429]/80 backdrop-blur-md border-b border-white/5 shadow-md">
         <div className="max-w-7xl mx-auto p-4 flex justify-between items-center">
           <div><h1 className="text-2xl font-black text-white">{headerTitle}</h1></div>
