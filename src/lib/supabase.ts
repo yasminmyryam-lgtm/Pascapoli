@@ -18,11 +18,15 @@ import { env } from './env'
 const url = env.supabaseUrl || 'https://qnwilkzfeiuscdtvextu.supabase.co'
 const key = env.supabaseAnonKey || 'sb_publishable_HxVUmMWCJb--auQ6xqYCLg_LUGis_gu'
 
+const browserStorage = typeof window !== 'undefined' ? window.localStorage : undefined
+
 export const supabase: SupabaseClient = createClient(url, key, {
   auth: {
-    persistSession: env.isConfigured,
-    autoRefreshToken: env.isConfigured,
+    persistSession: true,
+    autoRefreshToken: true,
     detectSessionInUrl: true,
+    flowType: 'pkce',
+    storage: browserStorage,
     storageKey: 'pastapoli.auth.session',
   },
 })

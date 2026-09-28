@@ -52,17 +52,9 @@ export function useSession(): SessionState {
 
   useEffect(() => {
     let cancelled = false
+    let sawSession = false
 
     if (urlLooksLikePasswordRecovery()) beginPasswordRecovery()
-
-    getSession()
-      .then((session) => {
-        if (!cancelled) setState(fromSession(session))
-      })
-      .catch((cause: unknown) => {
-        console.error('[auth] session restore failed:', cause)
-        if (!cancelled) setState(ANONYMOUS)
-      })
 
     const unsubscribe = onAuthStateChange((session, event) => {
       if (cancelled) return
@@ -71,8 +63,25 @@ export function useSession(): SessionState {
         clearRecoveryParamsFromUrl()
       }
       if (event === 'SIGNED_IN' || event === 'PASSWORD_RECOVERY') disableGuestPlay()
+      if (session) sawSession = true
+      if (event === 'SIGNED_OUT') sawSession = false
+      // The first callback can arrive before localStorage is read. A null
+      // INITIAL_SESSION must not wipe a session that getSession restores.
+      if (!session && event === 'INITIAL_SESSION') return
       setState(fromSession(session))
     })
+
+    getSession()
+      .then((session) => {
+        if (cancelled) return
+        if (!session && sawSession) return
+        if (session) sawSession = true
+        setState(fromSession(session))
+      })
+      .catch((cause: unknown) => {
+        console.error('[auth] session restore failed:', cause)
+        if (!cancelled && !sawSession) setState(ANONYMOUS)
+      })
 
     return () => {
       cancelled = true

@@ -96,12 +96,27 @@ export function loadPendingRelay(): RelayRun | null {
 const COOP_QUERY_KEYS = ['room', 'roomId', 'coop', 'peer']
 
 /**
- * URL first, then the copy saved before auth. Persists a fresh link immediately.
- * A co-op room query skips that handoff. Auth redirects still resume it.
+ * Supabase PKCE and recovery redirects. A saved relay must not start while
+ * these are on the URL, because starting one replaces the address bar and
+ * drops the code before the session can be stored.
  */
-export function captureRelay(search: string): RelayRun | null {
+const AUTH_CALLBACK_KEYS = ['code', 'access_token', 'refresh_token', 'token_hash', 'error_description']
+
+export function urlHasAuthCallback(search: string, hash = ''): boolean {
+  const query = new URLSearchParams(search)
+  const fragment = new URLSearchParams(hash.replace(/^#/, ''))
+  return AUTH_CALLBACK_KEYS.some((key) => query.has(key) || fragment.has(key))
+}
+
+/**
+ * URL first, then the copy saved before auth. Persists a fresh link immediately.
+ * A co-op room query skips that handoff. An auth callback skips it too,
+ * until the code is stored; the menu then resumes the saved relay.
+ */
+export function captureRelay(search: string, hash = ''): RelayRun | null {
   const params = new URLSearchParams(search)
   if (COOP_QUERY_KEYS.some((key) => params.has(key))) return null
+  if (urlHasAuthCallback(search, hash)) return null
   if (params.get('relay') != null) {
     const fromUrl = parseRelay(search)
     if (fromUrl) savePendingRelay(fromUrl)

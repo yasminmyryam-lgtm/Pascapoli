@@ -21,7 +21,7 @@ import { disableGuestPlay, useGuestPlay } from './auth/guestPlay'
 import { useProfile } from './profile/useProfile'
 import { CREDENTIAL_RULES } from './lib/validation'
 import { claimRelayRewards, syncWallet } from './economy/economyApi'
-import { captureRelay, clearPendingRelay, relayBlocks, type RelayRun } from './relay'
+import { captureRelay, clearPendingRelay, loadPendingRelay, relayBlocks, urlHasAuthCallback, type RelayRun } from './relay'
 
 export type { CoopConfig }
 
@@ -133,7 +133,21 @@ export default function App() {
   const { selectCharacter, buyCharacter, selectObstacle, buyObstacle, addCoins } = useActions()
   const lvl = levelInfo(xp)
 
-  const [pendingRelay, setPendingRelay] = useState<RelayRun | null>(() => captureRelay(window.location.search))
+  const [pendingRelay, setPendingRelay] = useState<RelayRun | null>(() =>
+    captureRelay(window.location.search, window.location.hash),
+  )
+
+  // A login or recovery redirect keeps its code until Supabase stores the
+  // session. The saved relay is picked up on the next render, once that
+  // code is gone, so the handoff does not erase it.
+  useEffect(() => {
+    if (pendingRelay) return
+    if (urlHasAuthCallback(window.location.search, window.location.hash)) return
+    const params = new URLSearchParams(window.location.search)
+    if (['room', 'roomId', 'coop', 'peer'].some((key) => params.has(key))) return
+    const saved = loadPendingRelay()
+    if (saved) setPendingRelay(saved)
+  }, [pendingRelay, sessionStatus])
   const [activeRelay, setActiveRelay] = useState<RelayRun | null>(null)
   const relayHandled = useRef(false)
   const [activeEngineMode, setActiveEngineMode] = useState<'NORMAL' | 'CHALLENGE' | 'COOP'>('NORMAL')

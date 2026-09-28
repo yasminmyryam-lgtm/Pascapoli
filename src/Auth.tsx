@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react'
 import { CREDENTIAL_RULES } from './lib/validation'
 import {
-  completePasswordReset,
   login,
   register,
   requestPasswordReset,
   resendConfirmationEmail,
   updatePassword,
+  verifyPasswordResetCode,
 } from './auth/authService'
 import { describeError, toAuthError, type AuthErrorCode } from './auth/errors'
 import { env } from './lib/env'
@@ -25,6 +25,63 @@ const TITLES: Record<Mode, string> = {
 
 const INPUT_CLASS = 'w-full rounded-2xl bg-black/25 px-5 py-4 text-white outline-none'
 
+function EyeIcon({ off }: { off: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      {off ? (
+        <>
+          <path d="M3 3l18 18" strokeLinecap="round" />
+          <path d="M10.6 10.6a2 2 0 002.8 2.8" strokeLinecap="round" />
+          <path d="M9.9 5.1A10.8 10.8 0 0112 5c5 0 9.3 3.1 11 7a11.8 11.8 0 01-3.2 4.1M6.1 6.1C4.2 7.3 2.7 9 1 12c1.7 3.9 6 7 11 7 1.6 0 3.1-.3 4.5-.9" strokeLinecap="round" />
+        </>
+      ) : (
+        <>
+          <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" strokeLinejoin="round" />
+          <circle cx="12" cy="12" r="3" />
+        </>
+      )}
+    </svg>
+  )
+}
+
+function PasswordField({
+  value,
+  onChange,
+  placeholder,
+  autoComplete,
+  minLength,
+}: {
+  value: string
+  onChange: (value: string) => void
+  placeholder: string
+  autoComplete: string
+  minLength?: number
+}) {
+  const [visible, setVisible] = useState(false)
+  return (
+    <div className="relative">
+      <input
+        type={visible ? 'text' : 'password'}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        autoComplete={autoComplete}
+        minLength={minLength}
+        className={`${INPUT_CLASS} pr-14`}
+        required
+      />
+      <button
+        type="button"
+        aria-label={visible ? 'Hide password' : 'Show password'}
+        onClick={() => setVisible((shown) => !shown)}
+        className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-300 hover:text-white"
+      >
+        <EyeIcon off={visible} />
+      </button>
+    </div>
+  )
+}
+
 export default function Auth() {
   const recovering = useIsRecoveringPassword()
   const [mode, setMode] = useState<Mode>(recovering ? 'reset' : 'login')
@@ -39,7 +96,8 @@ export default function Auth() {
   const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
-    if (recovering) setMode((current) => (current === 'otp' ? current : 'reset'))
+    if (!recovering) return
+    setMode((current) => (current === 'otp' ? current : 'reset'))
   }, [recovering])
 
   const goTo = (next: Mode) => {
@@ -117,18 +175,14 @@ export default function Auth() {
     })()
   }
 
-  const handleOtpReset = (e: React.FormEvent) => {
+  const handleVerifyCode = (e: React.FormEvent) => {
     e.preventDefault()
     void run(async () => {
-      if (password !== confirmPassword) {
-        setErrorMsg('Passwords do not match.')
-        setErrorCode('UNKNOWN')
-        return
-      }
-      await completePasswordReset(email, code, password)
-      setCode('')
+      await verifyPasswordResetCode(email, code)
       setPassword('')
       setConfirmPassword('')
+      setMode('reset')
+      setInfo('Code verified. Choose a new password.')
     })
   }
 
@@ -187,14 +241,11 @@ export default function Auth() {
                 required
               />
             )}
-            <input
-              type="password"
+            <PasswordField
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={setPassword}
               placeholder="Password"
               autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
-              className={INPUT_CLASS}
-              required
             />
             {feedback}
             <button
@@ -248,9 +299,9 @@ export default function Auth() {
         )}
 
         {mode === 'otp' && (
-          <form onSubmit={handleOtpReset} className="flex flex-col gap-4">
+          <form onSubmit={handleVerifyCode} className="flex flex-col gap-4">
             <p className="text-white/60 text-sm text-center">
-              Enter the code sent to <span className="text-white">{email}</span>, then choose a new password.
+              Enter the code sent to <span className="text-white">{email}</span>.
             </p>
             <input
               type="text"
@@ -262,33 +313,13 @@ export default function Auth() {
               className={`${INPUT_CLASS} text-center text-2xl tracking-[0.25em]`}
               required
             />
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="New Password"
-              autoComplete="new-password"
-              minLength={CREDENTIAL_RULES.passwordMinLength}
-              className={INPUT_CLASS}
-              required
-            />
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Confirm Password"
-              autoComplete="new-password"
-              minLength={CREDENTIAL_RULES.passwordMinLength}
-              className={INPUT_CLASS}
-              required
-            />
             {feedback}
             <button
               type="submit"
               disabled={isLoading || code.length < CREDENTIAL_RULES.otpMinLength}
               className="mt-2 w-full rounded-2xl py-4 text-lg font-black uppercase text-[#123] bg-[#6ee7a8] disabled:opacity-50"
             >
-              {isLoading ? 'Saving...' : 'Verify and save'}
+              {isLoading ? 'Checking...' : 'Verify code'}
             </button>
             <button type="button" onClick={() => goTo('forgot')} className="text-sm font-bold text-[#8ec5ff]">
               Send a new code
@@ -304,25 +335,19 @@ export default function Auth() {
             <p className="text-white/60 text-sm text-center">
               Choose a new password. You will stay signed in after it is saved.
             </p>
-            <input
-              type="password"
+            <PasswordField
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={setPassword}
               placeholder="New Password"
               autoComplete="new-password"
               minLength={CREDENTIAL_RULES.passwordMinLength}
-              className={INPUT_CLASS}
-              required
             />
-            <input
-              type="password"
+            <PasswordField
               value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
+              onChange={setConfirmPassword}
               placeholder="Confirm Password"
               autoComplete="new-password"
               minLength={CREDENTIAL_RULES.passwordMinLength}
-              className={INPUT_CLASS}
-              required
             />
             {feedback}
             <button
