@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 import ErrorBoundary from './ErrorBoundary'
+import { I18nProvider } from './i18n/I18n'
 import { initAdSdk } from './ads/adService'
 import './index.css'
 
@@ -27,7 +28,9 @@ try {
   ReactDOM.createRoot(el).render(
     <React.StrictMode>
       <ErrorBoundary>
-        <App />
+        <I18nProvider>
+          <App />
+        </I18nProvider>
       </ErrorBoundary>
     </React.StrictMode>,
   )

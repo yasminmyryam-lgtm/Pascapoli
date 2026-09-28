@@ -22,6 +22,8 @@ import { useProfile } from './profile/useProfile'
 import { CREDENTIAL_RULES } from './lib/validation'
 import { claimRelayRewards, syncWallet } from './economy/economyApi'
 import { captureRelay, clearPendingRelay, loadPendingRelay, relayBlocks, urlHasAuthCallback, type RelayRun } from './relay'
+import { useI18n } from './i18n/I18n'
+import LanguageMenu from './i18n/LanguageMenu'
 
 export type { CoopConfig }
 
@@ -108,6 +110,7 @@ function HScroll({ children, className = '' }: { children: React.ReactNode; clas
 }
 
 export default function App() {
+  const { t } = useI18n()
   const { status: sessionStatus, userId, email, username } = useSession()
   const isRecoveringPassword = useIsRecoveringPassword()
   const isGuestPlay = useGuestPlay()
@@ -332,7 +335,7 @@ export default function App() {
   const activeChar = CHARACTERS.find((c) => c.id === selected) ?? CHARACTERS[0]
 
   // Dynamic header title that reflects the section currently in view.
-  const [headerTitle, setHeaderTitle] = useState('Home')
+  const [headerTitle, setHeaderTitle] = useState(t('nav.home'))
   const charSectionRef = useRef<HTMLElement>(null)
   const themesSectionRef = useRef<HTMLElement>(null)
   useEffect(() => {
@@ -340,21 +343,21 @@ export default function App() {
       const y = window.scrollY + 140
       const themesTop = themesSectionRef.current?.offsetTop ?? Infinity
       const charTop = charSectionRef.current?.offsetTop ?? Infinity
-      if (y >= themesTop) setHeaderTitle('Themes')
-      else if (y >= charTop) setHeaderTitle('Characters')
-      else setHeaderTitle('Home')
+      if (y >= themesTop) setHeaderTitle(t('nav.themes'))
+      else if (y >= charTop) setHeaderTitle(t('nav.characters'))
+      else setHeaderTitle(t('nav.home'))
     }
     onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
-  }, [])
+  }, [t])
 
   // Restoring a persisted session is asynchronous — show a neutral splash
   // instead of flashing the sign-in form at an already-authenticated player.
   if (sessionStatus === 'LOADING') {
     return (
       <div className="fixed inset-0 z-[500] flex items-center justify-center bg-[#1a0d2e]">
-        <p className="text-sm font-black uppercase tracking-[0.35em] text-[#8ec5ff] animate-pulse">Loading…</p>
+        <p className="text-sm font-black uppercase tracking-[0.35em] text-[#8ec5ff] animate-pulse">{t('common.loading')}</p>
       </div>
     )
   }
@@ -382,7 +385,7 @@ export default function App() {
           </ErrorBoundary>
         ) : (
           <div className="grid h-full place-items-center bg-[#11091c]">
-            <p className="text-4xl font-black text-white">Continue the game</p>
+            <p className="text-4xl font-black text-white">{t('common.continue')}</p>
           </div>
         )}
       </div>
@@ -420,13 +423,14 @@ export default function App() {
           <div className="text-center lg:text-left flex-1 w-full">
             <h2 className="text-4xl font-black text-white mb-2">{activeChar.name}</h2>
             <div className="flex items-center gap-4 justify-center lg:justify-start mb-4">
-              <p className="text-white/50 text-sm font-bold uppercase">Level {lvl.level} • {lvl.into}/{lvl.need} XP</p>
-              {streak.count > 0 && <p className="text-[#ff7ad9] text-sm font-bold uppercase">🔥 Streak {streak.count}</p>}
+              <p className="text-white/50 text-sm font-bold uppercase">{t('menu.level', { level: lvl.level, into: lvl.into, need: lvl.need })}</p>
+              {streak.count > 0 && <p className="text-[#ff7ad9] text-sm font-bold uppercase">🔥 {t('menu.streak', { count: streak.count })}</p>}
             </div>
             <div className="w-full h-3 bg-black/50 rounded-full mb-10 overflow-hidden"><div className="h-full bg-[#8ec5ff]" style={{ width: `${lvl.pct*100}%` }}></div></div>
 
             <div className="mb-3 flex flex-wrap items-center justify-center gap-3 lg:justify-start">
-              <span className="text-white/50 text-xs font-black uppercase tracking-wider">View</span>
+              <span className="text-white/50 text-xs font-black uppercase tracking-wider">{t('menu.view')}</span>
+              <LanguageMenu />
               <div className="inline-flex rounded-2xl bg-black/40 p-1" role="group" aria-label="Game perspective">
                 {(['2D', '3D'] as const).map((v) => (
                   <button
@@ -443,11 +447,11 @@ export default function App() {
               {viewMode === '3D' && <span className="text-white/40 text-[11px] font-bold">First-person · swipe to look</span>}
             </div>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 w-full">
-              <button onClick={() => handleGameLaunch('NORMAL')} className="bg-[#6ee7a8] text-[#170d24] py-4 rounded-2xl font-black uppercase">▶ Solo</button>
-              <button onClick={() => setCustomizeId(activeChar.id)} className="bg-[#412e61] text-white py-4 rounded-2xl font-black uppercase">👕 Custom</button>
-              <button onClick={() => setShowChallengePopup(true)} className="bg-[#ff7ad9] text-[#170d24] py-4 rounded-2xl font-black uppercase">🔥 Hard</button>
+              <button onClick={() => handleGameLaunch('NORMAL')} className="bg-[#6ee7a8] text-[#170d24] py-4 rounded-2xl font-black uppercase">▶ {t('button.play')}</button>
+              <button onClick={() => setCustomizeId(activeChar.id)} className="bg-[#412e61] text-white py-4 rounded-2xl font-black uppercase">👕 {t('button.shop')}</button>
+              <button onClick={() => setShowChallengePopup(true)} className="bg-[#ff7ad9] text-[#170d24] py-4 rounded-2xl font-black uppercase">🔥 {t('button.hard')}</button>
               {viewMode === '2D' && (
-                <button onClick={() => { relayHandled.current = true; clearPendingRelay(); setPendingRelay(null); setActiveRelay(null); setNetworkRole(null); setCoopConfig(prev => ({ ...prev, p1Char: selected, p2Char: selected })); setShowNetworkLobby(true); }} className="bg-[#8ec5ff] text-[#170d24] py-4 rounded-2xl font-black uppercase">🤝 Co-op</button>
+                <button onClick={() => { relayHandled.current = true; clearPendingRelay(); setPendingRelay(null); setActiveRelay(null); setNetworkRole(null); setCoopConfig(prev => ({ ...prev, p1Char: selected, p2Char: selected })); setShowNetworkLobby(true); }} className="bg-[#8ec5ff] text-[#170d24] py-4 rounded-2xl font-black uppercase">🤝 {t('button.coop')}</button>
               )}
             </div>
           </div>
@@ -456,7 +460,7 @@ export default function App() {
 
       {/* Character collection — main has pb-32 so scrolling works cleanly */}
       <section ref={charSectionRef} className="max-w-7xl mx-auto mt-12 px-4">
-        <h2 className="text-2xl font-black text-white mb-4">Characters</h2>
+        <h2 className="text-2xl font-black text-white mb-4">{t('menu.characters')}</h2>
         <div className="mb-5 flex max-w-full gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           {CHAR_FILTERS.map((f) => {
             const on = charFilter === f
@@ -492,13 +496,13 @@ export default function App() {
                 </div>
                 <h3 className="text-white font-bold text-center text-sm mb-4 truncate">{char.name}</h3>
                 {isOwned ? (
-                  <button onClick={() => selectCharacter(char.id)} className={`w-full py-3 rounded-xl font-black text-[11px] uppercase ${isSelected ? 'bg-[#6ee7a8] text-[#123]' : 'bg-white/10 text-white'}`}>{isSelected ? 'Equipped' : 'Select'}</button>
+                  <button onClick={() => selectCharacter(char.id)} className={`w-full py-3 rounded-xl font-black text-[11px] uppercase ${isSelected ? 'bg-[#6ee7a8] text-[#123]' : 'bg-white/10 text-white'}`}>{isSelected ? t('char.equipped') : t('char.select')}</button>
                 ) : need > 0 ? (
                   <div className="w-full rounded-xl bg-[#12081d] border border-white/10 px-3 py-2.5">
                     <div className="h-2 w-full overflow-hidden rounded-full bg-black/50">
                       <div className="h-full rounded-full transition-[width] duration-500" style={{ width: `${(have / need) * 100}%`, background: color }} />
                     </div>
-                    <p className="mt-1.5 text-center text-[10px] font-black uppercase tracking-wider text-white/60">🎁 Cards: {have}/{need}</p>
+                    <p className="mt-1.5 text-center text-[10px] font-black uppercase tracking-wider text-white/60">🎁 {t('char.cards', { have, need })}</p>
                   </div>
                 ) : (
                   <button onClick={() => buyCharacter(char.id, char.price, char.currency ?? 'COINS')} className="w-full py-3 rounded-xl font-black text-[11px] bg-[#12081d] border border-white/10 text-white">
@@ -512,7 +516,7 @@ export default function App() {
       </section>
 
       <section ref={themesSectionRef} className="max-w-7xl mx-auto mt-12 mb-10">
-        <h2 className="text-xl font-black text-white mb-4 px-4">Themes</h2>
+        <h2 className="text-xl font-black text-white mb-4 px-4">{t('menu.themes')}</h2>
         <HScroll className="gap-4 pb-6 px-4 lg:px-14">
           {OBSTACLES.map((o) => {
             const on = obstacle === o.id
@@ -533,13 +537,13 @@ export default function App() {
                 style={{ background: o.backgroundStyle }}
               >
                 {o.Background && <div className="absolute inset-0 opacity-40 pointer-events-none z-0"><o.Background /></div>}
-                {locked && <div className="absolute inset-0 bg-black/55 z-[5] flex items-center justify-center pointer-events-none"><span className="text-white font-black text-sm">🔒 Level {o.unlockLevel}</span></div>}
+                {locked && <div className="absolute inset-0 bg-black/55 z-[5] flex items-center justify-center pointer-events-none"><span className="text-white font-black text-sm">🔒 {t('theme.locked', { level: o.unlockLevel })}</span></div>}
                 <div className="relative z-10 w-full bg-black/50 backdrop-blur-md p-3 rounded-xl flex justify-between items-center text-white font-bold text-sm pointer-events-none">
                   <span className="truncate">{o.name}</span>
                   {on ? (
-                    <span className="text-[#ffd24d] shrink-0">✓ Active</span>
+                    <span className="text-[#ffd24d] shrink-0">✓ {t('theme.active')}</span>
                   ) : isOwned ? (
-                    <span className="text-[#6ee7a8] shrink-0">Select</span>
+                    <span className="text-[#6ee7a8] shrink-0">{t('theme.select')}</span>
                   ) : (
                     <span className={`shrink-0 ${canAfford ? '' : 'text-[#ff9e9e]'}`}>{isDiamond ? '💎' : '🪙'} {o.price}</span>
                   )}
@@ -633,8 +637,12 @@ export default function App() {
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm" onClick={() => setShowSettings(false)}>
           <div className="relative max-h-[90vh] w-full max-w-[400px] overflow-y-auto rounded-[32px] border border-white/10 bg-[#1f1333] p-6" onClick={(e) => e.stopPropagation()} style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}>
             <button onClick={() => setShowSettings(false)} className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-full bg-white/10 text-white">✕</button>
-            <p className="font-display text-[11px] uppercase tracking-[0.35em] text-[#8ec5ff]">My Account</p>
-            <h2 className="font-display text-3xl font-black text-white mb-5">Settings</h2>
+            <p className="font-display text-[11px] uppercase tracking-[0.35em] text-[#8ec5ff]">{t('settings.account')}</p>
+            <h2 className="font-display text-3xl font-black text-white mb-5">{t('settings.title')}</h2>
+            <div className="mb-4">
+              <p className="mb-2 text-[10px] font-black uppercase tracking-wider text-white/40">{t('settings.language')}</p>
+              <LanguageMenu />
+            </div>
 
             <div className="rounded-3xl bg-black/30 p-4 mb-4">
               <div className="flex items-center gap-4">
@@ -657,20 +665,20 @@ export default function App() {
                         disabled={isProfileLoading}
                         className="rounded-xl bg-[#6ee7a8] px-4 py-2 text-xs font-black uppercase text-[#123] disabled:opacity-50"
                       >
-                        {isProfileLoading ? 'Saving…' : 'Save'}
+                        {isProfileLoading ? t('auth.saving') : t('settings.save')}
                       </button>
                       <button
                         onClick={() => setIsEditingUsername(false)}
                         className="rounded-xl bg-white/10 px-4 py-2 text-xs font-black uppercase text-white"
                       >
-                        Cancel
+                        {t('settings.cancel')}
                       </button>
                     </div>
                   </div>
                 ) : (
                   <div className="flex min-w-0 flex-1 items-center gap-2">
                     <div className="min-w-0 flex-1">
-                      <p className="text-white/40 text-[10px] font-black uppercase tracking-wider">Signed in as</p>
+                      <p className="text-white/40 text-[10px] font-black uppercase tracking-wider">{t('settings.signedIn')}</p>
                       <p className="truncate font-bold text-white">{displayName}</p>
                       <p className="truncate text-[11px] font-bold text-white/40">{accountEmail}</p>
                     </div>
@@ -693,24 +701,24 @@ export default function App() {
             <div className="grid grid-cols-4 gap-2 mb-4">
               <div className="rounded-2xl bg-black/30 p-3 text-center">
                 <p className="text-2xl font-black text-[#ffd24d]">{best}</p>
-                <p className="text-[10px] font-black uppercase text-white/40">Best</p>
+                <p className="text-[10px] font-black uppercase text-white/40">{t('settings.best')}</p>
               </div>
               <div className="rounded-2xl bg-black/30 p-3 text-center">
                 <p className="text-2xl font-black text-[#6ee7a8]">{lvl.level}</p>
-                <p className="text-[10px] font-black uppercase text-white/40">Level</p>
+                <p className="text-[10px] font-black uppercase text-white/40">{t('settings.level')}</p>
               </div>
               <div className="rounded-2xl bg-black/30 p-3 text-center">
                 <p className="text-2xl font-black text-[#ff7ad9]">{totalGames}</p>
-                <p className="text-[10px] font-black uppercase text-white/40">Games</p>
+                <p className="text-[10px] font-black uppercase text-white/40">{t('settings.games')}</p>
               </div>
               <div className="rounded-2xl bg-black/30 p-3 text-center">
                 <p className="text-2xl font-black text-[#ff9f43]">🔥{streak.count}</p>
-                <p className="text-[10px] font-black uppercase text-white/40">Streak</p>
+                <p className="text-[10px] font-black uppercase text-white/40">{t('settings.streak')}</p>
               </div>
             </div>
 
             <button onClick={() => setMutedState(toggleMuted())} className="mb-3 flex w-full items-center justify-between rounded-2xl bg-black/30 p-4 text-white">
-              <span className="font-bold">{muted ? '🔇 Sound' : '🔊 Sound'}</span>
+              <span className="font-bold">{muted ? '🔇' : '🔊'} {t('settings.sound')}</span>
               <span className={`grid h-7 w-12 items-center rounded-full px-1 transition-colors ${muted ? 'bg-white/15' : 'bg-[#6ee7a8]'}`}>
                 <span className={`h-5 w-5 rounded-full bg-white transition-transform ${muted ? '' : 'translate-x-5'}`} />
               </span>
@@ -720,21 +728,21 @@ export default function App() {
                 "not built yet" rather than broken. */}
             <div className="mb-3 rounded-2xl bg-black/30 p-4">
               <div className="mb-3 flex items-center justify-between">
-                <p className="font-bold text-white">👥 Friends</p>
-                <span className="rounded-full bg-white/10 px-2 py-1 text-[9px] font-black uppercase text-white/50">Soon</span>
+                <p className="font-bold text-white">👥 {t('settings.friends')}</p>
+                <span className="rounded-full bg-white/10 px-2 py-1 text-[9px] font-black uppercase text-white/50">{t('settings.soon')}</span>
               </div>
               <div className="flex gap-2">
                 <input
                   type="text"
                   disabled
-                  placeholder="Search players…"
+                  placeholder={t('settings.searchPlaceholder')}
                   className="min-w-0 flex-1 rounded-xl bg-black/40 px-3 py-2.5 text-sm text-white placeholder-white/30 outline-none disabled:opacity-60"
                 />
                 <button
                   disabled
                   className="rounded-xl bg-[#8ec5ff] px-4 py-2.5 text-xs font-black uppercase text-[#123] disabled:opacity-40"
                 >
-                  Search
+                  {t('settings.search')}
                 </button>
               </div>
             </div>
@@ -742,16 +750,16 @@ export default function App() {
             {logoutError && <p className="mb-3 text-center text-xs font-bold text-[#ff4d4d]">{logoutError}</p>}
             {isGuestPlay ? (
               <div>
-                <p className="mb-3 text-center text-sm font-bold text-[#8ec5ff]">Log in to save your score and progress!</p>
+                <p className="mb-3 text-center text-sm font-bold text-[#8ec5ff]">{t('settings.guestHint')}</p>
                 <button
                   onClick={() => { setIsEditingUsername(false); setShowSettings(false); disableGuestPlay() }}
                   className="w-full rounded-2xl bg-[#6ee7a8] py-4 font-black uppercase text-[#170d24]"
                 >
-                  Log In / Create Account
+                  {t('settings.login')}
                 </button>
               </div>
             ) : (
-              <button onClick={() => void handleLogout()} className="w-full rounded-2xl bg-[#ff6b6b] py-4 font-black uppercase text-white">Log Out</button>
+              <button onClick={() => void handleLogout()} className="w-full rounded-2xl bg-[#ff6b6b] py-4 font-black uppercase text-white">{t('settings.logout')}</button>
             )}
           </div>
         </div>

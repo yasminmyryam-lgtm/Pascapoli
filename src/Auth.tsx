@@ -13,16 +13,9 @@ import { describeError, toAuthError, type AuthErrorCode } from './auth/errors'
 import { env } from './lib/env'
 import { useIsRecoveringPassword } from './auth/recoveryState'
 import { enableGuestPlay } from './auth/guestPlay'
+import { useI18n } from './i18n/I18n'
 
 type Mode = 'login' | 'register' | 'forgot' | 'otp' | 'reset'
-
-const TITLES: Record<Mode, string> = {
-  login: 'Sign In',
-  register: 'Create Account',
-  forgot: 'Forgot password?',
-  otp: 'Enter Code',
-  reset: 'Set New Password',
-}
 
 const INPUT_CLASS = 'w-full rounded-2xl bg-black/25 px-5 py-4 text-white outline-none'
 
@@ -84,7 +77,15 @@ function PasswordField({
 }
 
 export default function Auth() {
+  const { t } = useI18n()
   const recovering = useIsRecoveringPassword()
+  const titles: Record<Mode, string> = {
+    login: t('auth.signIn'),
+    register: t('auth.register'),
+    forgot: t('auth.forgotTitle'),
+    otp: t('auth.otpTitle'),
+    reset: t('auth.resetTitle'),
+  }
   const [mode, setMode] = useState<Mode>(recovering ? 'reset' : 'login')
   const [email, setEmail] = useState('')
   const [username, setUsername] = useState('')
@@ -158,7 +159,7 @@ export default function Auth() {
         setMode('otp')
         setCode('')
         setPassword('')
-        setInfo('Code sent')
+        setInfo(t('auth.codeSent'))
       } catch (cause) {
         console.error('[auth] resetPasswordForEmail failed:', cause)
         const rec = cause && typeof cause === 'object' ? (cause as { error_description?: unknown; message?: unknown }) : null
@@ -191,7 +192,7 @@ export default function Auth() {
       await logout()
       setPassword('')
       setMode('login')
-      setInfo('Password updated. Sign in with your new password.')
+      setInfo(t('auth.updated'))
     })
   }
 
@@ -205,7 +206,7 @@ export default function Auth() {
   return (
     <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 md:p-8 bg-[#1a0d2e]">
       <div className="w-full max-w-md rounded-[40px] border border-white/10 bg-[#2b1c47] p-8 shadow-2xl">
-        <h2 className="text-3xl font-black text-white text-center mb-6">{TITLES[mode]}</h2>
+        <h2 className="text-3xl font-black text-white text-center mb-6">{titles[mode]}</h2>
         {!env.isConfigured && (
           <p className="mb-4 text-center text-xs font-bold text-[#ffd24d]">
             Sign-in is unavailable on this deploy. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, then rebuild.
@@ -218,7 +219,7 @@ export default function Auth() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="Email"
+              placeholder={t('auth.email')}
               autoComplete="email"
               className={INPUT_CLASS}
               required
@@ -228,7 +229,7 @@ export default function Auth() {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Username"
+                placeholder={t('auth.username')}
                 autoComplete="username"
                 minLength={CREDENTIAL_RULES.usernameMinLength}
                 maxLength={CREDENTIAL_RULES.usernameMaxLength}
@@ -239,7 +240,7 @@ export default function Auth() {
             <PasswordField
               value={password}
               onChange={setPassword}
-              placeholder="Password"
+              placeholder={t('auth.password')}
               autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
             />
             {feedback}
@@ -248,7 +249,7 @@ export default function Auth() {
               disabled={isLoading}
               className="mt-2 w-full rounded-2xl py-4 text-lg font-black uppercase text-[#123] bg-[#6ee7a8] disabled:opacity-50"
             >
-              {isLoading ? 'Please wait...' : 'Play Now'}
+              {isLoading ? t('auth.wait') : t('auth.playNow')}
             </button>
             {errorCode === 'EMAIL_NOT_CONFIRMED' && (
               <button
@@ -257,12 +258,12 @@ export default function Auth() {
                 disabled={isLoading}
                 className="text-sm font-bold text-[#8ec5ff] disabled:opacity-50"
               >
-                Resend confirmation email
+                {t('auth.resend')}
               </button>
             )}
             {mode === 'login' && (
               <button type="button" onClick={() => goTo('forgot')} className="text-sm font-bold text-[#8ec5ff]">
-                Forgot your password?
+                {t('auth.forgot')}
               </button>
             )}
           </form>
@@ -271,13 +272,13 @@ export default function Auth() {
         {mode === 'forgot' && (
           <form onSubmit={handleForgot} className="flex flex-col gap-4">
             <p className="text-white/60 text-sm text-center">
-              Enter your account email and we will send a 6–8 digit code.
+              {t('auth.emailHelp')}
             </p>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="Email"
+              placeholder={t('auth.email')}
               autoComplete="email"
               className={INPUT_CLASS}
               required
@@ -288,7 +289,7 @@ export default function Auth() {
               disabled={isLoading}
               className="mt-2 w-full rounded-2xl py-4 text-lg font-black uppercase text-[#123] bg-[#8ec5ff] disabled:opacity-50"
             >
-              {isLoading ? 'Sending...' : 'Send code'}
+              {isLoading ? t('auth.sending') : t('auth.sendCode')}
             </button>
           </form>
         )}
@@ -296,7 +297,7 @@ export default function Auth() {
         {mode === 'otp' && (
           <form onSubmit={handleVerifyCode} className="flex flex-col gap-4">
             <p className="text-white/60 text-sm text-center">
-              Enter the code sent to <span className="text-white">{email}</span>.
+              {t('auth.codeHelp')} <span className="text-white">{email}</span>.
             </p>
             <input
               type="text"
@@ -315,13 +316,13 @@ export default function Auth() {
               disabled={isLoading || code.length !== 6}
               className="mt-2 w-full rounded-2xl py-4 text-lg font-black uppercase text-[#123] bg-[#6ee7a8] disabled:opacity-50"
             >
-              {isLoading ? 'Checking...' : 'Verify code'}
+              {isLoading ? t('auth.checking') : t('auth.verify')}
             </button>
             <button type="button" onClick={() => goTo('forgot')} className="text-sm font-bold text-[#8ec5ff]">
-              Send a new code
+              {t('auth.sendNew')}
             </button>
             <button type="button" onClick={() => goTo('login')} className="text-sm font-bold text-white/40">
-              Back to sign in.
+              {t('auth.back')}
             </button>
           </form>
         )}
@@ -329,12 +330,12 @@ export default function Auth() {
         {mode === 'reset' && (
           <form onSubmit={handleReset} className="flex flex-col gap-4">
             <p className="text-white/60 text-sm text-center">
-              Choose a new password.
+              {t('auth.choosePassword')}
             </p>
             <PasswordField
               value={password}
               onChange={setPassword}
-              placeholder="New Password"
+              placeholder={t('auth.newPassword')}
               autoComplete="new-password"
               minLength={CREDENTIAL_RULES.passwordMinLength}
             />
@@ -344,7 +345,7 @@ export default function Auth() {
               disabled={isLoading}
               className="mt-2 w-full rounded-2xl py-4 text-lg font-black uppercase text-[#123] bg-[#6ee7a8] disabled:opacity-50"
             >
-              {isLoading ? 'Saving...' : 'Update password'}
+              {isLoading ? t('auth.saving') : t('auth.updatePassword')}
             </button>
           </form>
         )}
@@ -356,17 +357,17 @@ export default function Auth() {
               className="mt-6 w-full text-sm font-bold text-white/40"
             >
               {mode === 'register'
-                ? 'Already have an account? Tap here.'
+                ? t('auth.haveAccount')
                 : mode === 'login'
-                  ? "Don't have an account? Create one."
-                  : 'Back to sign in.'}
+                  ? t('auth.needAccount')
+                  : t('auth.back')}
             </button>
             <button
               type="button"
               onClick={() => enableGuestPlay()}
               className="mt-3 w-full rounded-2xl border border-white/15 bg-white/5 py-3 text-sm font-black uppercase text-white/80"
             >
-              Play as Guest
+              {t('auth.guest')}
             </button>
           </>
         )}

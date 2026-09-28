@@ -3,14 +3,26 @@ import { CHARACTERS } from './characters'
 import {
   CharacterView,
   COSMETIC_RARITY,
-  SLOT_LABEL,
-  TYPE_LABEL,
   useAccessoryInventory,
   type Slot,
 } from './cosmetics'
 import { useActions, useGameState } from './store'
+import { useI18n } from './i18n/I18n'
+import type { MessageKey } from './i18n/dictionary'
 
 const SLOT_ORDER: Slot[] = ['hat', 'glasses', 'face', 'wig', 'outfit', 'accessory', 'shoes', 'wings', 'aura']
+
+const SLOT_KEY: Record<Slot, MessageKey> = {
+  hat: 'shop.hats',
+  glasses: 'shop.glasses',
+  face: 'shop.face',
+  wig: 'shop.wigs',
+  outfit: 'shop.costumes',
+  accessory: 'shop.accessories',
+  shoes: 'shop.shoes',
+  wings: 'shop.wings',
+  aura: 'shop.skins',
+}
 
 /** True only when this accessory is allowed on the character open in the menu. */
 function fitsCharacter(charId: string, item: { id: string; slot: string }): boolean {
@@ -52,6 +64,7 @@ function fitsCharacter(charId: string, item: { id: string; slot: string }): bool
 function Coin({ size = 18 }: { size?: number }) { return <svg width={size} height={size} viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#f5a623"/><circle cx="12" cy="12" r="8.5" fill="#ffcf4d"/></svg> }
 
 export default function Customize({ charId, onClose }: { charId: string, onClose: () => void }) {
+  const { t } = useI18n()
   const { coins, equipped } = useGameState()
   const { buyCosmetic, equipCosmetic, unequipCosmetic } = useActions()
 
@@ -90,7 +103,7 @@ export default function Customize({ charId, onClose }: { charId: string, onClose
             const on = activeFilter === s
             return (
               <button key={s} onClick={() => setFilter(s)} className={`shrink-0 rounded-full px-5 py-2 text-xs font-bold uppercase tracking-wider transition-all ${on ? 'bg-[#ffd24d] text-[#1a0d2e]' : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white'}`}>
-                {s === 'ALL' ? 'All' : SLOT_LABEL[s]}
+                {s === 'ALL' ? t('shop.all') : t(SLOT_KEY[s])}
               </button>
             )
           })}
@@ -108,7 +121,7 @@ export default function Customize({ charId, onClose }: { charId: string, onClose
                 <article key={c.id} className="relative flex flex-col overflow-hidden bg-white/5 rounded-[28px] border-2 h-60 transition-all" style={{ borderColor: c.equipped ? meta.color : 'transparent' }}>
                   <div className="absolute top-3 w-full px-3 flex justify-between items-center z-10">
                     <span className="px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-widest" style={{ background: meta.color, color: '#1a0d2e' }}>{c.rarity}</span>
-                    <span className="px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-widest bg-black/40 text-white/60">{TYPE_LABEL[c.type]}</span>
+                    <span className="px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-widest bg-black/40 text-white/60">{t(SLOT_KEY[c.slot])}</span>
                   </div>
                   <div className="relative mx-auto mt-8 h-24 w-24 overflow-hidden">
                     <div className="absolute left-1/2 top-1/2 h-20 w-20 -translate-x-1/2 -translate-y-1/2 rounded-full blur-[30px] opacity-20" style={{ background: meta.color }}></div>
@@ -122,7 +135,7 @@ export default function Customize({ charId, onClose }: { charId: string, onClose
                         className="w-full py-2.5 rounded-xl text-[10px] font-bold uppercase flex items-center justify-center gap-1.5"
                         style={{ background: meta.color, color: '#1a0d2e' }}
                       >
-                        <Coin size={12}/> {c.price}
+                        <Coin size={12}/> {t('shop.buy')} {c.price}
                       </button>
                     ) : c.equipped ? (
                       <button
@@ -130,7 +143,7 @@ export default function Customize({ charId, onClose }: { charId: string, onClose
                         className="w-full py-2.5 rounded-xl text-[10px] font-bold uppercase"
                         style={{ background: 'rgba(255,255,255,0.1)', color: meta.color }}
                       >
-                        Equipped ✓ · Unequip
+                        {t('shop.equipped')} ✓ · {t('shop.unequip')}
                       </button>
                     ) : (
                       <button
@@ -138,7 +151,7 @@ export default function Customize({ charId, onClose }: { charId: string, onClose
                         className="w-full py-2.5 rounded-xl text-[10px] font-bold uppercase"
                         style={{ background: meta.color, color: '#1a0d2e' }}
                       >
-                        Owned · Equip
+                        {t('shop.owned')} · {t('shop.equip')}
                       </button>
                     )}
                   </div>
