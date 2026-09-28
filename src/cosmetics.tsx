@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { isAccessoryCompatible } from './accessoryCompatibility'
 import { offsetFor } from './accessoryOffsets'
 import { anchorsFor, bodyFor, characterById } from './characters'
-import { fitCacheKey, fitScaleFromBBox, fitTransform, peekFitScale, rememberFitScale } from './art/fit'
+import { fitCacheKey, fitScaleFromBBox, fitTransform, peekFitScale, rememberFitScale, silhouetteScale } from './art/fit'
 import { ART_CONTENT_TRANSFORM, ART_SCALE, ART_VIEW_BOX, DEFAULT_ANCHORS, type AnchorName, type CharacterAnchors } from './art/kit'
 import { isFounder, useGameState } from './store'
 
@@ -806,8 +806,12 @@ function CompositeLayers({
       </g>
       {layer('background-effects', 'viewbox')}
       {layer('back-accessories', 'viewbox')}
+      <g id="character-body-bounds">
+        <g transform={ART_CONTENT_TRANSFORM}>
+          <g id="character-base">{Body()}</g>
+        </g>
+      </g>
       <g transform={ART_CONTENT_TRANSFORM}>
-        <g id="character-base">{Body()}</g>
         <g id="body-accessories">{layer('body-accessories', 'pad')}</g>
         <g id="face-accessories">{layer('face-accessories', 'pad')}</g>
         <g id="head-accessories">{layer('head-accessories', 'pad')}</g>
@@ -847,7 +851,10 @@ export function measureFitScale(charId: string, equipped: Record<string, string>
   svg.style.top = '0'
   document.body.appendChild(svg)
   const inner = svg.querySelector('#character-fit-inner') as SVGGElement | null
-  const scale = inner ? fitScaleFromBBox(inner.getBBox()) : 1
+  const body = svg.querySelector('#character-body-bounds') as SVGGElement | null
+  const scale = inner
+    ? (body ? silhouetteScale(body.getBBox(), inner.getBBox()) : fitScaleFromBBox(inner.getBBox()))
+    : 1
   svg.remove()
   return rememberFitScale(key, scale)
 }
@@ -878,7 +885,9 @@ export function CharacterComposite({
     }
     const inner = innerRef.current
     if (!inner) return
-    const next = rememberFitScale(key, fitScaleFromBBox(inner.getBBox()))
+    const body = inner.querySelector('#character-body-bounds') as SVGGElement | null
+    const full = inner.getBBox()
+    const next = rememberFitScale(key, body ? silhouetteScale(body.getBBox(), full) : fitScaleFromBBox(full))
     setScale((prev) => (prev === next ? prev : next))
   }, [key, fitScale])
 

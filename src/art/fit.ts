@@ -17,6 +17,9 @@ export const FIT_PIVOT = {
   y: 66 * ART_SCALE,
 }
 
+/** Small bodies may scale up so naked characters share one visual size. */
+const MAX_NORMALIZE = 1.5
+
 const cache = new Map<string, number>()
 
 export function fitCacheKey(charId: string, equipped: Record<string, string>): string {
@@ -37,12 +40,26 @@ export function rememberFitScale(key: string, scale: number): number {
   return scale
 }
 
-/** Uniform scale-down so `bbox` fits inside the standard box. Never scales up. */
-export function fitScaleFromBBox(bbox: { width: number; height: number }): number {
+type Box = { width: number; height: number }
+
+/** Uniform scale that fits `bbox` in the standard box. May scale up, within a cap. */
+export function fitScaleFromBBox(bbox: Box): number {
   if (!(bbox.width > 0) || !(bbox.height > 0)) return 1
   const maxW = FIT_MAX_W - FIT_PAD * 2
   const maxH = FIT_MAX_H - FIT_PAD * 2
-  return Math.min(1, maxW / bbox.width, maxH / bbox.height)
+  return Math.min(MAX_NORMALIZE, maxW / bbox.width, maxH / bbox.height)
+}
+
+/**
+ * Naked body is normalized to the standard box. If hats, wings, or other
+ * accessories extend past that body, the whole group scales down so the
+ * combined silhouette occupies the same width and height as the body alone.
+ */
+export function silhouetteScale(body: Box, full: Box): number {
+  const normalize = fitScaleFromBBox(body)
+  if (!(body.width > 0) || !(body.height > 0) || !(full.width > 0) || !(full.height > 0)) return normalize
+  const shrink = Math.min(1, body.width / full.width, body.height / full.height)
+  return normalize * shrink
 }
 
 export function fitTransform(scale: number): string | undefined {
