@@ -279,10 +279,8 @@ export async function verifyPasswordResetCode(emailInput: string, codeInput: str
 /**
  * Step 3 — set the new password using the recovery session from step 2.
  *
- * The session is kept afterwards, so clearing the recovery flag drops the
- * player straight into the game. Supabase revokes the other outstanding
- * sessions on a password change, so a stolen recovery code cannot leave a
- * usable session behind elsewhere.
+ * The recovery flag stays on. The screen signs the session out afterwards
+ * and returns to login; clearing the flag here would open the game first.
  */
 export async function updatePassword(newPassword: string): Promise<void> {
   const password = parse(passwordSchema, newPassword)
@@ -290,7 +288,6 @@ export async function updatePassword(newPassword: string): Promise<void> {
   try {
     const { error } = await supabase.auth.updateUser({ password })
     if (error) throw error
-    endPasswordRecovery()
   } catch (cause) {
     throw toAuthError(cause)
   }

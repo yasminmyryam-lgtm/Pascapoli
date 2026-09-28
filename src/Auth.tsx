@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { CREDENTIAL_RULES } from './lib/validation'
 import {
   login,
+  logout,
   register,
   requestPasswordReset,
   resendConfirmationEmail,
@@ -27,7 +28,7 @@ const INPUT_CLASS = 'w-full rounded-2xl bg-black/25 px-5 py-4 text-white outline
 
 function EyeIcon({ off }: { off: boolean }) {
   return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+    <svg viewBox="0 0 24 24" className="h-5 w-5 text-white" fill="none" stroke="#ffffff" strokeWidth="2" aria-hidden="true">
       {off ? (
         <>
           <path d="M3 3l18 18" strokeLinecap="round" />
@@ -74,7 +75,7 @@ function PasswordField({
         type="button"
         aria-label={visible ? 'Hide password' : 'Show password'}
         onClick={() => setVisible((shown) => !shown)}
-        className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-300 hover:text-white"
+        className="absolute right-4 top-1/2 -translate-y-1/2 text-white"
       >
         <EyeIcon off={visible} />
       </button>
@@ -88,7 +89,6 @@ export default function Auth() {
   const [email, setEmail] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
   const [code, setCode] = useState('')
   const [info, setInfo] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
@@ -158,8 +158,7 @@ export default function Auth() {
         setMode('otp')
         setCode('')
         setPassword('')
-        setConfirmPassword('')
-        setInfo('Enter the code we sent to your email.')
+        setInfo('Code sent')
       } catch (cause) {
         console.error('[auth] resetPasswordForEmail failed:', cause)
         const rec = cause && typeof cause === 'object' ? (cause as { error_description?: unknown; message?: unknown }) : null
@@ -180,23 +179,19 @@ export default function Auth() {
     void run(async () => {
       await verifyPasswordResetCode(email, code)
       setPassword('')
-      setConfirmPassword('')
       setMode('reset')
-      setInfo('Code verified. Choose a new password.')
+      setInfo('')
     })
   }
 
   const handleReset = (e: React.FormEvent) => {
     e.preventDefault()
     void run(async () => {
-      if (password !== confirmPassword) {
-        setErrorMsg('Passwords do not match.')
-        setErrorCode('UNKNOWN')
-        return
-      }
       await updatePassword(password)
+      await logout()
       setPassword('')
-      setConfirmPassword('')
+      setMode('login')
+      setInfo('Password updated. Sign in with your new password.')
     })
   }
 
@@ -308,15 +303,16 @@ export default function Auth() {
               inputMode="numeric"
               autoComplete="one-time-code"
               value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, CREDENTIAL_RULES.otpMaxLength))}
-              placeholder={'0'.repeat(CREDENTIAL_RULES.otpLength)}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              placeholder="000000"
+              maxLength={6}
               className={`${INPUT_CLASS} text-center text-2xl tracking-[0.25em]`}
               required
             />
             {feedback}
             <button
               type="submit"
-              disabled={isLoading || code.length < CREDENTIAL_RULES.otpMinLength}
+              disabled={isLoading || code.length !== 6}
               className="mt-2 w-full rounded-2xl py-4 text-lg font-black uppercase text-[#123] bg-[#6ee7a8] disabled:opacity-50"
             >
               {isLoading ? 'Checking...' : 'Verify code'}
@@ -333,19 +329,12 @@ export default function Auth() {
         {mode === 'reset' && (
           <form onSubmit={handleReset} className="flex flex-col gap-4">
             <p className="text-white/60 text-sm text-center">
-              Choose a new password. You will stay signed in after it is saved.
+              Choose a new password.
             </p>
             <PasswordField
               value={password}
               onChange={setPassword}
               placeholder="New Password"
-              autoComplete="new-password"
-              minLength={CREDENTIAL_RULES.passwordMinLength}
-            />
-            <PasswordField
-              value={confirmPassword}
-              onChange={setConfirmPassword}
-              placeholder="Confirm Password"
               autoComplete="new-password"
               minLength={CREDENTIAL_RULES.passwordMinLength}
             />
@@ -355,7 +344,7 @@ export default function Auth() {
               disabled={isLoading}
               className="mt-2 w-full rounded-2xl py-4 text-lg font-black uppercase text-[#123] bg-[#6ee7a8] disabled:opacity-50"
             >
-              {isLoading ? 'Saving...' : 'Save and play'}
+              {isLoading ? 'Saving...' : 'Update password'}
             </button>
           </form>
         )}
