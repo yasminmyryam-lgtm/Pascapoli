@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { isAccessoryCompatible } from './accessoryCompatibility'
 import { CHARACTERS } from './characters'
 import {
   CharacterView,
@@ -25,9 +26,18 @@ export default function Customize({ charId, onClose }: { charId: string, onClose
   const inventory = useAccessoryInventory(char.id)
 
   const [filter, setFilter] = useState<'ALL' | Slot>('ALL')
+  const compatible = useMemo(
+    () => inventory.filter((c) => isAccessoryCompatible(char.id, c)),
+    [inventory, char.id],
+  )
+  const visibleSlots = useMemo(
+    () => SLOT_ORDER.filter((slot) => compatible.some((c) => c.slot === slot)),
+    [compatible],
+  )
+  const activeFilter = filter !== 'ALL' && !visibleSlots.includes(filter) ? 'ALL' : filter
   const items = useMemo(
-    () => (filter === 'ALL' ? inventory : inventory.filter((c) => c.slot === filter)),
-    [filter, inventory],
+    () => (activeFilter === 'ALL' ? compatible : compatible.filter((c) => c.slot === activeFilter)),
+    [activeFilter, compatible],
   )
 
   return (
@@ -47,8 +57,8 @@ export default function Customize({ charId, onClose }: { charId: string, onClose
         </div>
 
         <div className="flex gap-2 overflow-x-auto px-8 py-4 shrink-0 scrollbar-hide border-b border-white/5 bg-black/20">
-          {(['ALL', ...SLOT_ORDER] as const).map((s) => {
-            const on = filter === s
+          {(['ALL', ...visibleSlots] as const).map((s) => {
+            const on = activeFilter === s
             return (
               <button key={s} onClick={() => setFilter(s)} className={`shrink-0 rounded-full px-5 py-2 text-xs font-bold uppercase tracking-wider transition-all ${on ? 'bg-[#ffd24d] text-[#1a0d2e]' : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white'}`}>
                 {s === 'ALL' ? 'All' : SLOT_LABEL[s]}

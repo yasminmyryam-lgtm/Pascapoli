@@ -1,4 +1,5 @@
 import { useCallback, useSyncExternalStore } from 'react'
+import { compatibleLoadout, isAccessoryCompatibleById } from './accessoryCompatibility'
 import { CARD_POOL, CHARACTER_IDS, CHARACTERS, cardsRequired } from './characters'
 import { isFounderEmail } from './founder'
 import { rollLoot } from './lootbox'
@@ -143,7 +144,7 @@ function sanitizeEquipped(raw: unknown): Equipped {
   const out: Equipped = {}
   for (const [charId, slots] of Object.entries(raw as Record<string, unknown>)) {
     if (!CHARACTER_IDS.has(charId) || !slots || typeof slots !== 'object') continue
-    out[charId] = { ...(slots as Record<string, string>) }
+    out[charId] = compatibleLoadout(charId, slots as Record<string, string>)
   }
   return out
 }
@@ -488,6 +489,7 @@ export function useActions() {
 
   /** Equips into the slot, or unequips when the same item is already worn. */
   const equipCosmetic = useCallback((charId: string, slot: string, cosmeticId: string) => setState((s) => {
+    if (!isAccessoryCompatibleById(charId, cosmeticId)) return {}
     const cur = s.equipped[charId] || {}
     const next = { ...cur }
     if (next[slot] === cosmeticId) delete next[slot]
@@ -505,7 +507,10 @@ export function useActions() {
 
   const selectCharacter = useCallback((id: string) => {
     if (!CHARACTER_IDS.has(id)) return
-    setState({ selected: id })
+    setState((s) => ({
+      selected: id,
+      equipped: { ...s.equipped, [id]: compatibleLoadout(id, s.equipped[id] || {}) },
+    }))
   }, [])
   const selectObstacle = useCallback((id: string) => setState({ obstacle: id }), [])
   const setLastSpin = useCallback((ts: number) => setState({ lastSpin: ts }), [])

@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties, type JSX } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { isAccessoryCompatible } from './accessoryCompatibility'
 import { offsetFor } from './accessoryOffsets'
 import { anchorsFor, bodyFor, characterById } from './characters'
 import { fitCacheKey, fitScaleFromBBox, fitTransform, peekFitScale, rememberFitScale } from './art/fit'
@@ -777,12 +778,16 @@ function CompositeLayers({
   charId: string
   equipped: Record<string, string>
 }) {
-  const Body = baseBody(charId, equipped)
-  const anchors = anchorsFor(charId)
   const worn = Object.values(equipped)
     .map(cosmeticById)
     .filter((c): c is Cosmetic => Boolean(c))
+    .filter((c) => isAccessoryCompatible(charId, c))
     .sort((a, b) => TYPE_PAINT_ORDER.indexOf(a.type) - TYPE_PAINT_ORDER.indexOf(b.type))
+  const visibleEquipped = Object.fromEntries(
+    Object.entries(equipped).filter(([, id]) => worn.some((c) => c.id === id)),
+  )
+  const Body = baseBody(charId, visibleEquipped)
+  const anchors = anchorsFor(charId)
 
   const layer = (id: LayerId, space: 'pad' | 'viewbox') =>
     worn
