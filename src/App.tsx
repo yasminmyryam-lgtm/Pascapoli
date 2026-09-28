@@ -67,11 +67,10 @@ function HScroll({ children, className = '' }: { children: React.ReactNode; clas
     const el = scrollerRef.current
     if (!el) return
     const onWheel = (e: WheelEvent) => {
-      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return
-      e.preventDefault()
-      el.scrollLeft += e.deltaY
+      if (Math.abs(e.deltaY) >= Math.abs(e.deltaX)) return
+      el.scrollLeft += e.deltaX
     }
-    el.addEventListener('wheel', onWheel, { passive: false })
+    el.addEventListener('wheel', onWheel, { passive: true })
     return () => el.removeEventListener('wheel', onWheel)
   }, [])
 
@@ -377,7 +376,7 @@ export default function App() {
   }
 
   return (
-    <main className="min-h-screen w-full max-w-full overflow-x-clip bg-[#1b1429] pt-20 font-display pb-32 md:pt-24" style={{ background: 'radial-gradient(150% 100% at 50% 0%, #2f1d4a 0%, #11091c 100%)' }}>
+    <main className="min-h-screen w-full max-w-full overflow-x-clip overflow-y-visible bg-[#1b1429] pt-20 font-display pb-32 md:pt-24" style={{ background: 'radial-gradient(150% 100% at 50% 0%, #2f1d4a 0%, #11091c 100%)' }}>
       <header className="fixed top-0 left-0 z-50 w-full border-b border-white/5 bg-[#1b1429] shadow-md backdrop-blur-md">
         <div className="mx-auto flex w-full max-w-7xl items-center justify-end gap-2 px-3 py-2 md:justify-between md:p-4">
           <h1 className="hidden text-2xl font-black text-white md:block">{headerTitle}</h1>

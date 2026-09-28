@@ -27,8 +27,11 @@ body,
   width: 100%;
   max-width: 100%;
   min-height: 100%;
-  overflow-x: hidden;
-  overscroll-behavior: none;
+  /* `hidden` on one axis forces the other to `auto` and, with overscroll
+     chaining off, the mouse wheel never reaches the page. `clip` only
+     cuts horizontal overflow and leaves vertical scrolling on the body. */
+  overflow-x: clip;
+  overflow-y: visible;
 }
 
 body {
