@@ -14,6 +14,7 @@ import { env } from './lib/env'
 import { useIsRecoveringPassword } from './auth/recoveryState'
 import { enableGuestPlay } from './auth/guestPlay'
 import { useI18n } from './i18n/I18n'
+import LanguageMenu from './i18n/LanguageMenu'
 
 type Mode = 'login' | 'register' | 'forgot' | 'otp' | 'reset'
 
@@ -21,7 +22,7 @@ const INPUT_CLASS = 'w-full rounded-2xl bg-black/25 px-5 py-4 text-white outline
 
 function EyeIcon({ off }: { off: boolean }) {
   return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5 text-white" fill="none" stroke="#ffffff" strokeWidth="2" aria-hidden="true">
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="#D3D3D3" strokeWidth="2" aria-hidden="true">
       {off ? (
         <>
           <path d="M3 3l18 18" strokeLinecap="round" />
@@ -61,14 +62,14 @@ function PasswordField({
         placeholder={placeholder}
         autoComplete={autoComplete}
         minLength={minLength}
-        className={`${INPUT_CLASS} pr-14`}
+        className={`${INPUT_CLASS} auth-password pr-14`}
         required
       />
       <button
         type="button"
         aria-label={visible ? 'Hide password' : 'Show password'}
         onClick={() => setVisible((shown) => !shown)}
-        className="absolute right-4 top-1/2 -translate-y-1/2 text-white"
+        className="absolute right-4 top-1/2 -translate-y-1/2 text-[#D3D3D3]"
       >
         <EyeIcon off={visible} />
       </button>
@@ -205,7 +206,10 @@ export default function Auth() {
 
   return (
     <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 md:p-8 bg-[#1a0d2e]">
-      <div className="w-full max-w-md rounded-[40px] border border-white/10 bg-[#2b1c47] p-8 shadow-2xl">
+      <div className="relative w-full max-w-md rounded-[40px] border border-white/10 bg-[#2b1c47] p-8 shadow-2xl">
+        <div className="mb-5 flex justify-end">
+          <LanguageMenu />
+        </div>
         <h2 className="text-3xl font-black text-white text-center mb-6">{titles[mode]}</h2>
         {!env.isConfigured && (
           <p className="mb-4 text-center text-xs font-bold text-[#ffd24d]">
@@ -365,7 +369,7 @@ export default function Auth() {
             <button
               type="button"
               onClick={() => enableGuestPlay()}
-              className="mt-3 w-full rounded-2xl border border-white/15 bg-white/5 py-3 text-sm font-black uppercase text-white/80"
+              className="mt-3 w-full rounded-2xl bg-[#4a3570] py-3 text-sm font-black uppercase text-white"
             >
               {t('auth.guest')}
             </button>

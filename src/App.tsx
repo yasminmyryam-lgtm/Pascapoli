@@ -24,6 +24,7 @@ import { claimRelayRewards, syncWallet } from './economy/economyApi'
 import { captureRelay, clearPendingRelay, loadPendingRelay, relayBlocks, urlHasAuthCallback, type RelayRun } from './relay'
 import { useI18n } from './i18n/I18n'
 import LanguageMenu from './i18n/LanguageMenu'
+import { rarityMessageKey } from './i18n/rarity'
 
 export type { CoopConfig }
 
@@ -440,7 +441,7 @@ export default function App() {
                     aria-pressed={viewMode === v}
                     className={`rounded-xl px-6 py-2 text-sm font-black uppercase transition-colors ${viewMode === v ? 'bg-[#ffd24d] text-[#170d24]' : 'text-white/60 hover:text-white'}`}
                   >
-                    {v}
+                    {t(v === '2D' ? 'view.2d' : 'view.3d')}
                   </button>
                 ))}
               </div>
@@ -473,7 +474,7 @@ export default function App() {
                 className={`shrink-0 rounded-full px-5 py-2 text-xs font-black uppercase tracking-wider transition-all ${on ? 'text-[#170d24]' : 'bg-white/5 text-white/55 hover:bg-white/10 hover:text-white'}`}
                 style={on ? { background: hex } : { border: `1px solid ${hex}44` }}
               >
-                {f === 'ALL' ? 'All' : RARITY_PALETTE[f].name}
+                {f === 'ALL' ? t('rarity.all') : t(rarityMessageKey(f))}
               </button>
             )
           })}
@@ -488,7 +489,7 @@ export default function App() {
             const have = need > 0 ? Math.min(cards[char.id] ?? 0, need) : 0
             return (
               <article key={char.id} className={`rounded-[32px] p-5 transition-all ${isSelected ? 'bg-[#352554] border-2 border-[#6ee7a8]' : 'bg-[#2a1c42] border-2 border-transparent'}`}>
-                <div className="flex justify-between items-center mb-2"><span className="text-[9px] font-black uppercase px-2 py-0.5 rounded" style={{ color: color, backgroundColor: `${color}20` }}>{char.rarity}</span></div>
+                <div className="flex justify-between items-center mb-2"><span className="text-[9px] font-black uppercase px-2 py-0.5 rounded" style={{ color: color, backgroundColor: `${color}20` }}>{t(rarityMessageKey(char.rarity))}</span></div>
                 <div className="flex-1 flex justify-center py-4">
                   <div className="h-20 w-20">
                     <CharacterView charId={char.id} className={`h-20 w-20 ${!isOwned ? 'opacity-20 grayscale' : 'drop-shadow-xl'}`} />
@@ -636,7 +637,7 @@ export default function App() {
       {showSettings && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm" onClick={() => setShowSettings(false)}>
           <div className="relative max-h-[90vh] w-full max-w-[400px] overflow-y-auto rounded-[32px] border border-white/10 bg-[#1f1333] p-6" onClick={(e) => e.stopPropagation()} style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}>
-            <button onClick={() => setShowSettings(false)} className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-full bg-white/10 text-white">✕</button>
+            <button onClick={() => setShowSettings(false)} className="settings-close absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-full bg-white/10 text-white">✕</button>
             <p className="font-display text-[11px] uppercase tracking-[0.35em] text-[#8ec5ff]">{t('settings.account')}</p>
             <h2 className="font-display text-3xl font-black text-white mb-5">{t('settings.title')}</h2>
             <div className="mb-4">
@@ -720,7 +721,7 @@ export default function App() {
             <button onClick={() => setMutedState(toggleMuted())} className="mb-3 flex w-full items-center justify-between rounded-2xl bg-black/30 p-4 text-white">
               <span className="font-bold">{muted ? '🔇' : '🔊'} {t('settings.sound')}</span>
               <span className={`grid h-7 w-12 items-center rounded-full px-1 transition-colors ${muted ? 'bg-white/15' : 'bg-[#6ee7a8]'}`}>
-                <span className={`h-5 w-5 rounded-full bg-white transition-transform ${muted ? '' : 'translate-x-5'}`} />
+                <span className={`settings-sound-knob h-5 w-5 rounded-full bg-white transition-transform ${muted ? '' : 'translate-x-5'}`} />
               </span>
             </button>
 

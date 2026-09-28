@@ -89,6 +89,21 @@ export const en = {
   'revive.balance': 'You have {{diamonds}} 💎 · next revive doubles the price',
   'common.loading': 'Loading…',
   'common.continue': 'Continue the game',
+  'game.over': 'GAME OVER',
+  'game.menu': 'MENU',
+  'game.replay': 'REPLAY',
+  'game.totalEarned': 'Total Earned',
+  'game.shareContinue': 'Share to Friend to Continue',
+  'game.xp': 'XP',
+  'view.2d': '2D',
+  'view.3d': '3D',
+  'rarity.all': 'All',
+  'rarity.free': 'Free',
+  'rarity.common': 'Common',
+  'rarity.rare': 'Rare',
+  'rarity.epic': 'Epic',
+  'rarity.legendary': 'Legendary',
+  'rarity.mythic': 'Mythic',
 } as const
 
 export type MessageKey = keyof typeof en

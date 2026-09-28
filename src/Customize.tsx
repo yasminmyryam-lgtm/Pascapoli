@@ -8,6 +8,7 @@ import {
 } from './cosmetics'
 import { useActions, useGameState } from './store'
 import { useI18n } from './i18n/I18n'
+import { rarityMessageKey } from './i18n/rarity'
 import type { MessageKey } from './i18n/dictionary'
 
 const SLOT_ORDER: Slot[] = ['hat', 'glasses', 'face', 'wig', 'outfit', 'accessory', 'shoes', 'wings', 'aura']
@@ -120,7 +121,7 @@ export default function Customize({ charId, onClose }: { charId: string, onClose
               return (
                 <article key={c.id} className="relative flex flex-col overflow-hidden bg-white/5 rounded-[28px] border-2 h-60 transition-all" style={{ borderColor: c.equipped ? meta.color : 'transparent' }}>
                   <div className="absolute top-3 w-full px-3 flex justify-between items-center z-10">
-                    <span className="px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-widest" style={{ background: meta.color, color: '#1a0d2e' }}>{c.rarity}</span>
+                    <span className="px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-widest" style={{ background: meta.color, color: '#1a0d2e' }}>{t(rarityMessageKey(c.rarity))}</span>
                     <span className="px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-widest bg-black/40 text-white/60">{t(SLOT_KEY[c.slot])}</span>
                   </div>
                   <div className="relative mx-auto mt-8 h-24 w-24 overflow-hidden">

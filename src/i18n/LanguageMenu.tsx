@@ -2,6 +2,10 @@ import { useState } from 'react'
 import { useI18n } from './I18n'
 import { LANGUAGES, languageByCode } from './languages'
 
+function Flag({ src }: { src: string }) {
+  return <img src={src} alt="" width={24} height={18} className="h-[18px] w-6 shrink-0 rounded-sm object-cover" />
+}
+
 export default function LanguageMenu({ className = '' }: { className?: string }) {
   const { lang, setLang, t } = useI18n()
   const [open, setOpen] = useState(false)
@@ -17,7 +21,7 @@ export default function LanguageMenu({ className = '' }: { className?: string })
         onClick={() => setOpen((value) => !value)}
         className="flex items-center gap-2 rounded-2xl bg-black/40 px-3 py-2 text-sm font-black text-white"
       >
-        <span aria-hidden="true">{current.flag}</span>
+        <Flag src={current.flagSrc} />
         <span>{current.name}</span>
       </button>
       {open && (
@@ -37,9 +41,9 @@ export default function LanguageMenu({ className = '' }: { className?: string })
                   setLang(option.code)
                   setOpen(false)
                 }}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-bold ${on ? 'bg-[#ffd24d] text-[#170d24]' : 'text-white hover:bg-white/10'}`}
+                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-start text-sm font-bold ${on ? 'bg-[#ffd24d] text-[#170d24]' : 'text-white hover:bg-white/10'}`}
               >
-                <span aria-hidden="true">{option.flag}</span>
+                <Flag src={option.flagSrc} />
                 <span>{option.name}</span>
               </button>
             )

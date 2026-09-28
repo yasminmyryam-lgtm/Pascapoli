@@ -10,6 +10,8 @@ import { authorizeDouble, chargeReviveDiamonds, isAdRevive } from './economy/eco
 import ReviveOffer from './economy/ReviveOffer'
 import { creditRelaySender } from './economy/economyApi'
 import { buildRelayUrl, chainPlayedIds, newRelayId, type RelayRun } from './relay'
+import { useI18n } from './i18n/I18n'
+import { rarityMessageKey } from './i18n/rarity'
 
 const GAME_WIDTH = 960
 const GAME_HEIGHT = 620
@@ -223,6 +225,7 @@ function makeConfetti(n: number, colors: string[]) {
 export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose, onReplay, relay = null, accountId = null }: { mode: 'NORMAL'|'CHALLENGE'|'COOP', coopConfig: CoopConfig, connection: any, onClose: () => void, onReplay: () => void, relay?: RelayRun | null, accountId?: string | null }) {
   const { obstacle, selected, equipped, diamonds } = useGameState()
   const { recordGame } = useActions()
+  const { t } = useI18n()
 
   const isCoop = mode === 'COOP'
   const isHost = coopConfig.isHost
@@ -923,7 +926,7 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
 
         {offerRevive && phase === 'playing' && (
           <div className="game-over-slide absolute inset-0 bg-[#0a0510]/95 backdrop-blur-xl flex flex-col items-center justify-center z-[100] p-6" onPointerDown={(e) => e.stopPropagation()}>
-            <h2 className="text-6xl font-black text-white mb-2 drop-shadow-xl text-center">{isCoop ? 'TEAM DOWN' : 'GAME OVER'}</h2>
+            <h2 className="text-6xl font-black text-white mb-2 drop-shadow-xl text-center">{isCoop ? 'TEAM DOWN' : t('game.over')}</h2>
             <div className="flex flex-col sm:flex-row gap-4 w-full max-w-xl mb-6">
               <div className="flex-1 bg-[#2a1c42] p-5 rounded-3xl text-center"><p className="text-[#8ec5ff] uppercase font-black text-xs mb-1">Score</p><p className="text-4xl font-black text-white">{scoreV}</p></div>
               <div className="flex-1 bg-[#241a33] p-5 rounded-3xl text-center"><p className="text-white/50 uppercase font-black text-xs mb-1">Collected</p><p className="text-4xl font-black text-white/90">{finalRef.current.collected}</p></div>
@@ -952,30 +955,30 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
 
         {phase === 'over' && (
           <div className="game-over-slide absolute inset-0 bg-[#0a0510]/95 backdrop-blur-xl flex flex-col items-center justify-center z-[100] p-6">
-            <h2 className="text-6xl font-black text-white mb-2 drop-shadow-xl text-center">{isCoop ? 'TEAM OVER' : 'GAME OVER'}</h2>
+            <h2 className="text-6xl font-black text-white mb-2 drop-shadow-xl text-center">{isCoop ? 'TEAM OVER' : t('game.over')}</h2>
             {summary?.isNewBest && <p className="mb-6 text-xl font-black text-[#ffd24d] animate-pulse">🏆 NEW RECORD!</p>}
             <div className="flex flex-col sm:flex-row gap-4 w-full max-w-xl mb-6">
               <div className="flex-1 bg-[#2a1c42] p-5 rounded-3xl text-center"><p className="text-[#8ec5ff] uppercase font-black text-xs mb-1">Score</p><p className="text-4xl font-black text-white">{scoreV}</p></div>
               <div className="flex-1 bg-[#241a33] p-5 rounded-3xl text-center"><p className="text-white/50 uppercase font-black text-xs mb-1">Collected</p><p className="text-4xl font-black text-white/90">{summary?.collected ?? 0}</p></div>
             </div>
             <div className="w-full max-w-xl bg-[#3a2822] p-5 rounded-3xl text-center mb-8">
-              <p className="text-[#ffd24d]/70 uppercase font-black text-xs mb-1">Total Earned</p>
+              <p className="text-[#ffd24d]/70 uppercase font-black text-xs mb-1">{t('game.totalEarned')}</p>
               <p className="text-5xl font-black text-[#ffd24d]">+{summary?.totalReward ?? 0} 🪙</p>
-              <p className="text-[#8ec5ff] text-sm font-bold mt-2">+{summary?.xpGained ?? 0} XP</p>
+              <p className="text-[#8ec5ff] text-sm font-bold mt-2">+{summary?.xpGained ?? 0} {t('game.xp')}</p>
             </div>
             <div className="flex gap-4 w-full max-w-xl">
               {relay ? (
                 <button onClick={onClose} className="flex-1 rounded-[32px] bg-[#6ee7a8] py-5 text-xl font-black uppercase text-[#170d24] shadow-lg">Main Menu</button>
               ) : (
                 <>
-                  <button onClick={onReplay} className="flex-1 rounded-[32px] bg-[#6ee7a8] py-5 text-xl font-black uppercase text-[#170d24] shadow-lg">REPLAY</button>
-                  <button onClick={onClose} className="flex-1 rounded-[32px] bg-white/10 py-5 text-xl font-black uppercase text-white border border-white/20">MENU</button>
+                  <button onClick={onReplay} className="flex-1 rounded-[32px] bg-[#6ee7a8] py-5 text-xl font-black uppercase text-[#170d24] shadow-lg">{t('game.replay')}</button>
+                  <button onClick={onClose} className="flex-1 rounded-[32px] bg-white/10 py-5 text-xl font-black uppercase text-white border border-white/20">{t('game.menu')}</button>
                 </>
               )}
             </div>
             {!isCoop && (
               <button onClick={() => { void shareRelayRun() }} className="mt-4 w-full max-w-xl rounded-[28px] bg-[#ffd24d] py-4 text-lg font-black uppercase text-[#170d24] shadow-lg">
-                Share to Friend to Continue
+                {t('game.shareContinue')}
               </button>
             )}
             {relayToast && <p className="mt-3 text-sm font-black text-[#ffd24d]">{relayToast}</p>}
@@ -998,6 +1001,7 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
  */
 export function UnboxingOverlay({ count, onDone }: { count: number; onDone: () => void }) {
   const { previewChest, applyChestDrop } = useActions()
+  const { t } = useI18n()
   const [index, setIndex] = useState(0)
   const [stage, setStage] = useState<'idle' | 'watching' | 'shaking' | 'flash' | 'reveal' | 'claiming'>('idle')
   const [drop, setDrop] = useState<ChestDrop | null>(null)
@@ -1158,7 +1162,7 @@ export function UnboxingOverlay({ count, onDone }: { count: number; onDone: () =
 
           <h3 className="relative text-white font-black text-base truncate">{char?.name ?? accessory?.name}</h3>
           <p className="relative mt-1 text-[10px] font-black uppercase tracking-[0.2em]" style={{ color: tier.accent }}>
-            {tierName}
+            {t(rarityMessageKey(tierName))}
             {accessory && ` · ${TYPE_LABEL[accessory.type]}`}
           </p>
 

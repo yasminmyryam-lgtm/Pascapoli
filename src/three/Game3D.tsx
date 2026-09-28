@@ -10,6 +10,7 @@ import { playRewardedAdSequence } from '../ads/adService'
 import { chargeReviveDiamonds, isAdRevive } from '../economy/economyApi'
 import ReviveOffer from '../economy/ReviveOffer'
 import { UnboxingOverlay } from '../Game'
+import { useI18n } from '../i18n/I18n'
 import Scene3D, { aimCamera3, CAMERA3D } from './Scene3D'
 import { useRunAssets } from './useRunAssets'
 import { createWorld3, flap3, readSnap3, revive3, writeSnap3, W3, type Mode3D, type Snap3, type Tick3, type World3 } from './world3d'
@@ -37,6 +38,7 @@ export default function Game3D({
 }) {
   const { obstacle, selected, equipped, diamonds } = useGameState()
   const { recordGame } = useActions()
+  const { t } = useI18n()
 
   const isCoop = mode === 'COOP'
   const isHost = !isCoop || coopConfig.isHost
@@ -415,7 +417,7 @@ export default function Game3D({
 
         {offerRevive && phase === 'playing' && (
           <div className="game-over-slide absolute inset-0 z-[100] bg-[#0a0510]/95 backdrop-blur-xl flex flex-col items-center justify-center p-6" onPointerDown={(e) => e.stopPropagation()}>
-            <h2 className="text-6xl font-black text-white mb-2 drop-shadow-xl text-center">{isCoop ? 'TEAM DOWN' : 'GAME OVER'}</h2>
+            <h2 className="text-6xl font-black text-white mb-2 drop-shadow-xl text-center">{isCoop ? 'TEAM DOWN' : t('game.over')}</h2>
             <div className="flex flex-col sm:flex-row gap-4 w-full max-w-xl mb-6">
               <div className="flex-1 bg-[#2a1c42] p-5 rounded-3xl text-center"><p className="text-[#8ec5ff] uppercase font-black text-xs mb-1">Score</p><p className="text-4xl font-black text-white">{hud.score}</p></div>
               <div className="flex-1 bg-[#241a33] p-5 rounded-3xl text-center"><p className="text-white/50 uppercase font-black text-xs mb-1">Collected</p><p className="text-4xl font-black text-white/90">{hud.coins}</p></div>
@@ -444,20 +446,20 @@ export default function Game3D({
 
         {phase === 'over' && (
           <div className="game-over-slide absolute inset-0 z-[100] bg-[#0a0510]/95 backdrop-blur-xl flex flex-col items-center justify-center p-6" onPointerDown={(e) => e.stopPropagation()}>
-            <h2 className="text-6xl font-black text-white mb-2 drop-shadow-xl text-center">{isCoop ? 'TEAM OVER' : 'GAME OVER'}</h2>
+            <h2 className="text-6xl font-black text-white mb-2 drop-shadow-xl text-center">{isCoop ? 'TEAM OVER' : t('game.over')}</h2>
             {summary?.isNewBest && <p className="mb-6 text-xl font-black text-[#ffd24d] animate-pulse">🏆 NEW RECORD!</p>}
             <div className="flex flex-col sm:flex-row gap-4 w-full max-w-xl mb-6">
               <div className="flex-1 bg-[#2a1c42] p-5 rounded-3xl text-center"><p className="text-[#8ec5ff] uppercase font-black text-xs mb-1">Score</p><p className="text-4xl font-black text-white">{hud.score}</p></div>
               <div className="flex-1 bg-[#241a33] p-5 rounded-3xl text-center"><p className="text-white/50 uppercase font-black text-xs mb-1">Collected</p><p className="text-4xl font-black text-white/90">{summary?.collected ?? 0}</p></div>
             </div>
             <div className="w-full max-w-xl bg-[#3a2822] p-5 rounded-3xl text-center mb-8">
-              <p className="text-[#ffd24d]/70 uppercase font-black text-xs mb-1">Total Earned</p>
+              <p className="text-[#ffd24d]/70 uppercase font-black text-xs mb-1">{t('game.totalEarned')}</p>
               <p className="text-5xl font-black text-[#ffd24d]">+{summary?.totalReward ?? 0} 🪙</p>
-              <p className="text-[#8ec5ff] text-sm font-bold mt-2">+{summary?.xpGained ?? 0} XP</p>
+              <p className="text-[#8ec5ff] text-sm font-bold mt-2">+{summary?.xpGained ?? 0} {t('game.xp')}</p>
             </div>
             <div className="flex gap-4 w-full max-w-xl">
-              <button onClick={onReplay} className="flex-1 rounded-[32px] bg-[#6ee7a8] py-5 text-xl font-black uppercase text-[#170d24] shadow-lg">REPLAY</button>
-              <button onClick={onClose} className="flex-1 rounded-[32px] bg-white/10 py-5 text-xl font-black uppercase text-white border border-white/20">MENU</button>
+              <button onClick={onReplay} className="flex-1 rounded-[32px] bg-[#6ee7a8] py-5 text-xl font-black uppercase text-[#170d24] shadow-lg">{t('game.replay')}</button>
+              <button onClick={onClose} className="flex-1 rounded-[32px] bg-white/10 py-5 text-xl font-black uppercase text-white border border-white/20">{t('game.menu')}</button>
             </div>
             <button onClick={shareScore} disabled={sharing} className="mt-4 w-full max-w-xl rounded-[28px] bg-[#8ec5ff]/15 border border-[#8ec5ff]/40 py-4 text-lg font-black uppercase text-[#8ec5ff] disabled:opacity-50 flex items-center justify-center gap-2">
               {sharing ? 'Generating…' : '📤 Share Score'}
