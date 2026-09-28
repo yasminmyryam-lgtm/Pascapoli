@@ -15,10 +15,10 @@ export const CREDENTIAL_RULES = {
   passwordMinLength: 8,
   usernameMinLength: 3,
   usernameMaxLength: 20,
-  /** This project's configured Supabase OTP length. Display purposes only. */
+  /** This project's configured Supabase recovery OTP length. */
   otpLength: 8,
-  otpMinLength: 6,
-  otpMaxLength: 10,
+  otpMinLength: 8,
+  otpMaxLength: 8,
 } as const
 
 export const emailSchema = z.string().trim().toLowerCase().min(3).email('Enter a valid email address.')
@@ -35,13 +35,13 @@ export const usernameSchema = z
   .regex(/^[A-Za-z0-9_]+$/, 'Username can use letters, numbers and underscore only.')
 
 /**
- * Supabase's OTP length is a project setting (6–10 digits), so the whole
- * supported range is accepted. Codes stay strings: a leading zero matters.
+ * Password recovery codes are exactly 8 digits, matching the Supabase email
+ * OTP setting. Codes stay strings: a leading zero matters.
  */
 export const otpSchema = z
   .string()
   .trim()
   .regex(
-    new RegExp(`^\\d{${CREDENTIAL_RULES.otpMinLength},${CREDENTIAL_RULES.otpMaxLength}}$`),
+    new RegExp(`^\\d{${CREDENTIAL_RULES.otpLength}}$`),
     'Enter the code exactly as it appears in the email.',
   )

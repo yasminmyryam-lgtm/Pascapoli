@@ -64,7 +64,7 @@ export const en = {
   'auth.updated': 'Password updated. Sign in with your new password.',
   'auth.sendNew': 'Send a new code',
   'auth.choosePassword': 'Choose a new password.',
-  'auth.emailHelp': 'Enter your account email and we will send a 6-digit code.',
+  'auth.emailHelp': 'Enter your account email and we will send an 8-digit code.',
   'auth.resend': 'Resend confirmation email',
   'shop.all': 'All',
   'shop.hats': 'Hats',

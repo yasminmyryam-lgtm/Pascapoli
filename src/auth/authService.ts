@@ -24,13 +24,13 @@ function requireConfigured() {
  * and error translation and knows nothing about React — the UI imports
  * functions, never the Supabase client.
  *
- * Password recovery uses Supabase's own 6-digit email OTP. We never generate,
+ * Password recovery uses Supabase's own 8-digit email OTP. We never generate,
  * store, hash or compare a code ourselves: expiry, single-use and attempt
  * limits are enforced by the provider. That is both less code and a smaller
  * attack surface than a hand-rolled OTP table.
  *
  * Supabase dashboard prerequisite: the "Reset Password" email template must
- * emit {{ .Token }} (the 6-digit code) rather than {{ .ConfirmationURL }}.
+ * emit {{ .Token }} (the 8-digit code) rather than {{ .ConfirmationURL }}.
  */
 
 /**
@@ -181,7 +181,7 @@ export function onAuthStateChange(
   return () => data.subscription.unsubscribe()
 }
 
-/* --- Password recovery (real 6-digit OTP) -------------------------------- */
+/* --- Password recovery (real 8-digit OTP) -------------------------------- */
 
 /**
  * Step 1 — request a recovery code.

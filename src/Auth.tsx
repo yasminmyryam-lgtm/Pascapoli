@@ -304,16 +304,16 @@ export default function Auth() {
               inputMode="numeric"
               autoComplete="one-time-code"
               value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              placeholder="000000"
-              maxLength={6}
-              className={`${INPUT_CLASS} text-center text-2xl tracking-[0.25em]`}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, CREDENTIAL_RULES.otpLength))}
+              placeholder="00000000"
+              maxLength={CREDENTIAL_RULES.otpLength}
+              className={`${INPUT_CLASS} px-3 text-center text-xl font-black tracking-[0.18em] tabular-nums sm:text-2xl sm:tracking-[0.28em]`}
               required
             />
             {feedback}
             <button
               type="submit"
-              disabled={isLoading || code.length !== 6}
+              disabled={isLoading || code.length !== CREDENTIAL_RULES.otpLength}
               className="mt-2 w-full rounded-2xl py-4 text-lg font-black uppercase text-[#123] bg-[#6ee7a8] disabled:opacity-50"
             >
               {isLoading ? t('auth.checking') : t('auth.verify')}
