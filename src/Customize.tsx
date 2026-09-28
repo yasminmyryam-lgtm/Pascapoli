@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react'
-import { isAccessoryCompatible } from './accessoryCompatibility'
 import { CHARACTERS } from './characters'
 import {
   CharacterView,
@@ -12,6 +11,43 @@ import {
 import { useActions, useGameState } from './store'
 
 const SLOT_ORDER: Slot[] = ['hat', 'glasses', 'face', 'wig', 'outfit', 'accessory', 'shoes', 'wings', 'aura']
+
+/** True only when this accessory is allowed on the character open in the menu. */
+function fitsCharacter(charId: string, item: { id: string; slot: string }): boolean {
+  const { id, slot } = item
+  switch (charId) {
+    case 'mozzarella':
+      return true
+    case 'espressino':
+      return id === 'mafia_sunglasses' || id === 'italian_mustache' || id === 'golden_boots' || slot === 'aura'
+    case 'panino':
+      return slot !== 'outfit' && id !== 'flame_wig' && id !== 'rainbow_wig' && id !== 'scarf' && id !== 'chef_apron'
+    case 'limone':
+      return slot !== 'outfit' && id !== 'scarf' && id !== 'mafia_sunglasses' && id !== 'star_glasses' && id !== 'rainbow_wig' && id !== 'bowtie'
+    case 'pizzarino':
+      return slot === 'hat' || slot === 'aura' || id === 'italian_mustache' || id === 'scarf' || id === 'halo'
+    case 'spaghetto':
+      return slot === 'glasses' || slot === 'shoes' || slot === 'wings' || slot === 'aura' || id === 'bowtie'
+    case 'olive-ocarina':
+      return slot === 'shoes' || slot === 'wings' || slot === 'aura'
+    case 'fursecino-fortino':
+      return slot === 'glasses' || slot === 'wings' || slot === 'aura' || id === 'bowtie'
+    case 'fursecina-fatina':
+      return slot === 'hat' || slot === 'shoes' || slot === 'aura' || id === 'halo'
+    case 'donutino-batutino':
+      return slot === 'shoes' || slot === 'aura' || id === 'bowtie' || id === 'halo'
+    case 'donutina-fantina':
+      return slot === 'shoes' || slot === 'aura' || id === 're_crown' || id === 'crown_hat' || id === 'don_fedora' || id === 'bowtie' || id === 'halo'
+    case 'risotto-roboto':
+      return slot === 'wings' || slot === 'aura' || id === 'bowtie' || id === 'halo'
+    case 'pestino-pinguino':
+      return slot === 'wings' || id === 'shades' || id === 'star_glasses' || id === 'bowtie'
+    case 'llama-lasagna':
+      return id === 'halo' || slot === 'aura'
+    default:
+      return true
+  }
+}
 
 function Coin({ size = 18 }: { size?: number }) { return <svg width={size} height={size} viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#f5a623"/><circle cx="12" cy="12" r="8.5" fill="#ffcf4d"/></svg> }
 
@@ -26,19 +62,12 @@ export default function Customize({ charId, onClose }: { charId: string, onClose
   const inventory = useAccessoryInventory(char.id)
 
   const [filter, setFilter] = useState<'ALL' | Slot>('ALL')
-  const compatible = useMemo(
-    () => inventory.filter((c) => isAccessoryCompatible(char.id, c)),
-    [inventory, char.id],
-  )
+  const compatible = inventory.filter((c) => fitsCharacter(charId, c))
   const visibleSlots = useMemo(
     () => SLOT_ORDER.filter((slot) => compatible.some((c) => c.slot === slot)),
     [compatible],
   )
   const activeFilter = filter !== 'ALL' && !visibleSlots.includes(filter) ? 'ALL' : filter
-  const items = useMemo(
-    () => (activeFilter === 'ALL' ? compatible : compatible.filter((c) => c.slot === activeFilter)),
-    [activeFilter, compatible],
-  )
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/80 backdrop-blur-md md:items-center md:justify-center p-0 md:p-8 font-display" onClick={onClose}>
@@ -69,7 +98,10 @@ export default function Customize({ charId, onClose }: { charId: string, onClose
 
         <div className="flex-1 overflow-y-auto p-6 md:p-8">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {items.map((c) => {
+            {inventory
+              .filter((c) => fitsCharacter(charId, c))
+              .filter((c) => activeFilter === 'ALL' || c.slot === activeFilter)
+              .map((c) => {
               const meta = COSMETIC_RARITY[c.rarity]
 
               return (

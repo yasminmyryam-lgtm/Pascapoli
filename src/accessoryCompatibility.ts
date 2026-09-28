@@ -2,8 +2,8 @@ import type { AccessoryType, Slot } from './cosmetics'
 
 /**
  * Which accessories each character may wear.
- * Aura / Skin is always allowed. Characters missing from this list are
- * unrestricted. Spaghettino Fantasmino was not in the QA list.
+ * Aura is included only where a character's rule allows it.
+ * Characters missing from this list are unrestricted. Spaghettino Fantasmino was not in the QA list.
  */
 
 type ItemRef = { id: string; slot: string; type: string }
@@ -22,7 +22,7 @@ const RULES: Record<string, Rule> = {
   mozzarella: ALL,
   espressino: {
     kind: 'only',
-    allow: { ids: ['mafia_sunglasses', 'italian_mustache', 'golden_boots'] },
+    allow: { ids: ['mafia_sunglasses', 'italian_mustache', 'golden_boots'], slots: ['aura'] },
   },
   panino: {
     kind: 'except',
@@ -37,35 +37,35 @@ const RULES: Record<string, Rule> = {
   },
   pizzarino: {
     kind: 'only',
-    allow: { ids: ['italian_mustache', 'scarf', 'halo'], slots: ['hat'] },
+    allow: { ids: ['italian_mustache', 'scarf', 'halo'], slots: ['hat', 'aura'] },
   },
   spaghetto: {
     kind: 'only',
-    allow: { ids: ['bowtie'], slots: ['glasses', 'shoes', 'wings'] },
+    allow: { ids: ['bowtie'], slots: ['glasses', 'shoes', 'wings', 'aura'] },
   },
   'olive-ocarina': {
     kind: 'only',
-    allow: { slots: ['shoes', 'wings'] },
+    allow: { slots: ['shoes', 'wings', 'aura'] },
   },
   'fursecino-fortino': {
     kind: 'only',
-    allow: { ids: ['bowtie'], slots: ['glasses', 'wings'] },
+    allow: { ids: ['bowtie'], slots: ['glasses', 'wings', 'aura'] },
   },
   'fursecina-fatina': {
     kind: 'only',
-    allow: { ids: ['halo'], slots: ['hat', 'shoes'] },
+    allow: { ids: ['halo'], slots: ['hat', 'shoes', 'aura'] },
   },
   'donutino-batutino': {
     kind: 'only',
-    allow: { ids: ['bowtie', 'halo'], slots: ['shoes'] },
+    allow: { ids: ['bowtie', 'halo'], slots: ['shoes', 'aura'] },
   },
   'donutina-fantina': {
     kind: 'only',
-    allow: { ids: ['re_crown', 'crown_hat', 'don_fedora', 'bowtie', 'halo'], slots: ['shoes'] },
+    allow: { ids: ['re_crown', 'crown_hat', 'don_fedora', 'bowtie', 'halo'], slots: ['shoes', 'aura'] },
   },
   'risotto-roboto': {
     kind: 'only',
-    allow: { ids: ['bowtie'], slots: ['wings'] },
+    allow: { ids: ['bowtie', 'halo'], slots: ['wings', 'aura'] },
   },
   'pestino-pinguino': {
     kind: 'only',
@@ -73,7 +73,7 @@ const RULES: Record<string, Rule> = {
   },
   'llama-lasagna': {
     kind: 'only',
-    allow: { ids: ['halo'] },
+    allow: { ids: ['halo'], slots: ['aura'] },
   },
 }
 
@@ -112,7 +112,6 @@ function listed(rule: AllowRule, item: ItemRef): boolean {
 }
 
 export function isAccessoryCompatible(charId: string, item: ItemRef): boolean {
-  if (item.slot === 'aura' || item.type === 'SKIN') return true
   const rule = RULES[charId] ?? ALL
   if (rule.kind === 'all') return true
   if (rule.kind === 'only') return listed(rule.allow, item)
