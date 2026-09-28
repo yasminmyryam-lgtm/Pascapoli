@@ -1,10 +1,12 @@
 /**
  * CrazyGames SDK v3 rewarded-ad helper.
  *
- * A reward is granted only when every ad in the sequence is fully watched.
- * Local development (and any environment without the SDK) uses a 3-second
- * mock countdown so gameplay can still be tested.
+ * The SDK script is loaded from index.html. `initAdSdk()` runs at boot.
+ * A reward is granted only from `adFinished`. `adError` (skip, unfilled, or
+ * failure) does not grant anything. Without the SDK, a short local countdown
+ * stands in so the revive button can still be tested.
  */
+import { isMuted, setMuted } from '../sfx'
 
 type RewardedAdCallbacks = {
   adFinished?: () => void
@@ -29,12 +31,6 @@ const MOCK_SECONDS = 3
 let initPromise: Promise<void> | null = null
 let sdkReady = false
 
-function isLocalDev(): boolean {
-  if (typeof window === 'undefined') return true
-  const host = window.location.hostname
-  return host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0'
-}
-
 function sdkAvailable(): boolean {
   return Boolean(window.CrazyGames?.SDK?.ad?.requestAd)
 }
@@ -43,7 +39,10 @@ export function initAdSdk(): Promise<void> {
   if (initPromise) return initPromise
   initPromise = (async () => {
     const sdk = typeof window !== 'undefined' ? window.CrazyGames?.SDK : undefined
-    if (!sdk?.init) return
+    if (!sdk?.init) {
+      sdkReady = sdkAvailable()
+      return
+    }
     try {
       await sdk.init()
       sdkReady = true
@@ -104,29 +103,39 @@ function showMockCountdown(seconds: number): Promise<boolean> {
   })
 }
 
-function requestRewardedAd(): Promise<boolean> {
+/**
+ * Plays one CrazyGames rewarded video.
+ * Resolves true only when the player finishes the ad (`adFinished`).
+ * Resolves false when the ad is skipped, unfilled, or errors (`adError`).
+ */
+export async function showRewardedAd(): Promise<boolean> {
+  await initAdSdk()
   const requestAd = window.CrazyGames?.SDK?.ad?.requestAd
-  if (!requestAd) return showMockCountdown(MOCK_SECONDS)
+  if (!requestAd || !sdkReady) return showMockCountdown(MOCK_SECONDS)
 
+  const wasMuted = isMuted()
   return new Promise((resolve) => {
     let settled = false
     const finish = (ok: boolean) => {
       if (settled) return
       settled = true
+      if (!wasMuted) setMuted(false)
       resolve(ok)
     }
     try {
-      const result = requestAd.call(window.CrazyGames!.SDK!.ad, 'rewarded', {
-        adStarted: () => {},
+      requestAd.call(window.CrazyGames!.SDK!.ad, 'rewarded', {
+        adStarted: () => {
+          if (!wasMuted) setMuted(true)
+        },
         adFinished: () => finish(true),
-        adError: () => finish(false),
+        adError: (error) => {
+          console.warn('[ads] rewarded ad was skipped or failed.', error)
+          finish(false)
+        },
       })
-      if (result && typeof (result as Promise<void>).then === 'function') {
-        ;(result as Promise<void>).then(() => finish(true)).catch(() => finish(false))
-      }
     } catch (err) {
-      console.warn('[ads] requestAd threw; using local mock.', err)
-      showMockCountdown(MOCK_SECONDS).then(finish)
+      console.warn('[ads] requestAd threw.', err)
+      finish(false)
     }
   })
 }
@@ -137,11 +146,8 @@ function requestRewardedAd(): Promise<boolean> {
  */
 export async function playRewardedAdSequence(count = 2): Promise<boolean> {
   const n = Math.max(1, Math.floor(Number(count) || 2))
-  await initAdSdk()
-
-  const useMock = isLocalDev() || !sdkAvailable() || !sdkReady
   for (let i = 0; i < n; i += 1) {
-    const ok = useMock ? await showMockCountdown(MOCK_SECONDS) : await requestRewardedAd()
+    const ok = await showRewardedAd()
     if (!ok) return false
   }
   return true

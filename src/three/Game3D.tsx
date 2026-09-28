@@ -6,7 +6,7 @@ import { CHARACTERS } from '../characters'
 import { OBSTACLES } from '../obstacles'
 import { sfx } from '../sfx'
 import { useActions, useGameState, type GameReward } from '../store'
-import { playRewardedAdSequence } from '../ads/adService'
+import { playRewardedAdSequence, showRewardedAd } from '../ads/adService'
 import { chargeReviveDiamonds, isAdRevive } from '../economy/economyApi'
 import ReviveOffer from '../economy/ReviveOffer'
 import { UnboxingOverlay } from '../Game'
@@ -145,9 +145,9 @@ export default function Game3D({
     setReviveError(null)
     try {
       if (isAdRevive(next)) {
-        const watched = await playRewardedAdSequence(2)
+        const watched = await showRewardedAd()
         if (!watched) {
-          setReviveError('Watch both ads to revive.')
+          setReviveError('Watch the ad to revive.')
           return
         }
       } else {
