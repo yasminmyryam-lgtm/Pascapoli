@@ -4,6 +4,18 @@ import { makeAnchors } from './kit'
 /** Public PNGs in `/public/characters`. Square 512×512 assets stay 1:1 in the pad. */
 const PORTRAIT_DIR = '/characters'
 
+const PORTRAIT_FILES: Record<string, string> = {
+  'olive-ocarina': 'olive-ocarina.png',
+  'fursecino-fortino': 'Fursecino-Fortino.png',
+  'fursecina-fatina': 'Fursecina-Fatina.png',
+  'donutino-batutino': 'Donutino-Batutino.png',
+  'donutina-fantina': 'Donutina-Fantina.png',
+  'risotto-roboto': 'risotto-roboto.png',
+  'pestino-pinguino': 'pestino-pinguino.png',
+  'llama-lasagna': 'lama-lasagna.png',
+  'spaghettino-fantasmino': 'Spaghettino-Fantasmino.png',
+}
+
 function portrait(file: string): BodyFn {
   return () => (
     <image
@@ -17,16 +29,14 @@ function portrait(file: string): BodyFn {
   )
 }
 
-export const PORTRAIT_BODIES: Record<string, BodyFn> = {
-  'olive-ocarina': portrait('olive-ocarina.png'),
-  'fursecino-fortino': portrait('Fursecino-Fortino.png'),
-  'fursecina-fatina': portrait('Fursecina-Fatina.png'),
-  'donutino-batutino': portrait('Donutino-Batutino.png'),
-  'donutina-fantina': portrait('Donutina-Fantina.png'),
-  'risotto-roboto': portrait('risotto-roboto.png'),
-  'pestino-pinguino': portrait('pestino-pinguino.png'),
-  'llama-lasagna': portrait('lama-lasagna.png'),
-  'spaghettino-fantasmino': portrait('Spaghettino-Fantasmino.png'),
+export const PORTRAIT_BODIES: Record<string, BodyFn> = Object.fromEntries(
+  Object.entries(PORTRAIT_FILES).map(([id, file]) => [id, portrait(file)]),
+)
+
+/** Root-relative PNG used by the home screen and the match, when this character has one. */
+export function characterPortraitPath(charId: string): string | null {
+  const file = PORTRAIT_FILES[charId]
+  return file ? `${PORTRAIT_DIR}/${file}` : null
 }
 
 export const PORTRAIT_ANCHORS: Record<string, CharacterAnchors> = {

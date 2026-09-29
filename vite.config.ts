@@ -9,13 +9,20 @@ import siteConfiguration from './.figma/make/site.json'
 export default defineConfig(({ mode }) => {
   // .figma/make/deploy-preview passes `--mode development` for cached-preview builds.
   const emitSourcemaps = mode === 'development'
+  // CrazyGames hosts the zip in a subpath. The existing site stays at `/`.
+  const crazygamesBuild = mode === 'crazygames'
 
   return {
     // Production always ships from the site root. A Figma preview base would
     // point script tags at another host, and that host's HTML is what the
     // browser rejects as a JavaScript MIME type.
-    base: mode === 'production' ? '/' : (process.env.FIGMA_PUBLIC_URL ? `${process.env.FIGMA_PUBLIC_URL}/` : '/'),
+    base: crazygamesBuild
+      ? './'
+      : mode === 'production'
+        ? '/'
+        : (process.env.FIGMA_PUBLIC_URL ? `${process.env.FIGMA_PUBLIC_URL}/` : '/'),
     build: {
+      outDir: crazygamesBuild ? 'dist-crazygames' : 'dist',
       sourcemap: emitSourcemaps ? 'inline' : false,
       minify: !emitSourcemaps,
     },

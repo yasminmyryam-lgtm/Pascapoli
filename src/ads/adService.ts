@@ -2,9 +2,9 @@
  * CrazyGames SDK v3 rewarded-ad helper.
  *
  * The SDK script is loaded from index.html. `initAdSdk()` runs at boot.
- * A reward is granted only from `adFinished`. `adError` (skip, unfilled, or
- * failure) does not grant anything. Without the SDK, a short local countdown
- * stands in so the revive button can still be tested.
+ * A reward is granted only from `adFinished`. `adError`, a missing SDK, or a
+ * failed init never grants a reward in a production build. `vite` dev may
+ * show a local countdown so revive can be tested without the portal.
  */
 import { isMuted, setMuted } from '../sfx'
 
@@ -14,8 +14,16 @@ type RewardedAdCallbacks = {
   adStarted?: () => void
 }
 
+type CrazyGameApi = {
+  loadingStart?: () => void
+  loadingStop?: () => void
+  gameplayStart?: () => void
+  gameplayStop?: () => void
+}
+
 type CrazyGamesSDK = {
   init?: () => Promise<void> | void
+  game?: CrazyGameApi
   ad?: {
     requestAd?: (type: string, callbacks?: RewardedAdCallbacks) => Promise<void> | void
   }
@@ -30,6 +38,59 @@ declare global {
 const MOCK_SECONDS = 3
 let initPromise: Promise<void> | null = null
 let sdkReady = false
+let loadingState: 'idle' | 'started' | 'stopped' = 'idle'
+let shellReady = false
+let wantGameplay = false
+let gameplayOn = false
+
+function callGame(method: keyof CrazyGameApi) {
+  try {
+    window.CrazyGames?.SDK?.game?.[method]?.()
+  } catch (err) {
+    console.warn(`[ads] ${method} failed.`, err)
+  }
+}
+
+function finishLoading() {
+  if (loadingState !== 'started' || !shellReady) return
+  callGame('loadingStop')
+  loadingState = 'stopped'
+}
+
+function beginLoading() {
+  if (loadingState !== 'idle' || !sdkReady) return
+  callGame('loadingStart')
+  loadingState = 'started'
+  finishLoading()
+}
+
+/** Call once the existing boot splash has finished. Does not add a new screen. */
+export function notifyShellReady() {
+  if (shellReady) return
+  shellReady = true
+  finishLoading()
+}
+
+function flushGameplay() {
+  if (!sdkReady) return
+  if (wantGameplay && !gameplayOn) {
+    gameplayOn = true
+    callGame('gameplayStart')
+  } else if (!wantGameplay && gameplayOn) {
+    gameplayOn = false
+    callGame('gameplayStop')
+  }
+}
+
+export function markGameplayStart() {
+  wantGameplay = true
+  flushGameplay()
+}
+
+export function markGameplayStop() {
+  wantGameplay = false
+  flushGameplay()
+}
 
 function sdkAvailable(): boolean {
   return Boolean(window.CrazyGames?.SDK?.ad?.requestAd)
@@ -41,13 +102,17 @@ export function initAdSdk(): Promise<void> {
     const sdk = typeof window !== 'undefined' ? window.CrazyGames?.SDK : undefined
     if (!sdk?.init) {
       sdkReady = sdkAvailable()
+      beginLoading()
+      flushGameplay()
       return
     }
     try {
       await sdk.init()
       sdkReady = true
+      beginLoading()
+      flushGameplay()
     } catch (err) {
-      console.warn('[ads] CrazyGames SDK init failed; using local mock.', err)
+      console.warn('[ads] CrazyGames SDK init failed. Ads stay off.', err)
       sdkReady = false
     }
   })()
@@ -111,7 +176,10 @@ function showMockCountdown(seconds: number): Promise<boolean> {
 export async function showRewardedAd(): Promise<boolean> {
   await initAdSdk()
   const requestAd = window.CrazyGames?.SDK?.ad?.requestAd
-  if (!requestAd || !sdkReady) return showMockCountdown(MOCK_SECONDS)
+  if (!requestAd || !sdkReady) {
+    if (import.meta.env.DEV) return showMockCountdown(MOCK_SECONDS)
+    return false
+  }
 
   const wasMuted = isMuted()
   return new Promise((resolve) => {
@@ -140,15 +208,31 @@ export async function showRewardedAd(): Promise<boolean> {
   })
 }
 
-/**
- * Plays `count` rewarded videos one after another.
- * Returns true only when every ad is fully watched (or the local mock completes).
- */
-export async function playRewardedAdSequence(count = 2): Promise<boolean> {
-  const n = Math.max(1, Math.floor(Number(count) || 2))
-  for (let i = 0; i < n; i += 1) {
-    const ok = await showRewardedAd()
-    if (!ok) return false
+/** One midgame break. No reward. A missing or failed ad returns immediately. */
+export async function showMidgameAd(): Promise<void> {
+  try {
+    await initAdSdk()
+    const requestAd = window.CrazyGames?.SDK?.ad?.requestAd
+    if (!requestAd || !sdkReady) return
+    await new Promise<void>((resolve) => {
+      let settled = false
+      const done = () => {
+        if (settled) return
+        settled = true
+        resolve()
+      }
+      try {
+        requestAd.call(window.CrazyGames!.SDK!.ad, 'midgame', {
+          adStarted: () => {},
+          adFinished: () => done(),
+          adError: () => done(),
+        })
+      } catch (err) {
+        console.warn('[ads] midgame request failed.', err)
+        done()
+      }
+    })
+  } catch (err) {
+    console.warn('[ads] midgame skipped.', err)
   }
-  return true
 }

@@ -1,16 +1,17 @@
 import { Canvas } from '@react-three/fiber'
-import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type MouseEvent, type PointerEvent } from 'react'
 import * as THREE from 'three'
 import type { CoopConfig } from '../coopConfig'
 import { CHARACTERS } from '../characters'
 import { OBSTACLES } from '../obstacles'
 import { sfx } from '../sfx'
 import { useActions, useGameState, type GameReward } from '../store'
-import { playRewardedAdSequence, showRewardedAd } from '../ads/adService'
+import { markGameplayStart, markGameplayStop, showMidgameAd, showRewardedAd } from '../ads/adService'
 import { chargeReviveDiamonds, isAdRevive } from '../economy/economyApi'
 import ReviveOffer from '../economy/ReviveOffer'
 import { UnboxingOverlay } from '../Game'
 import { useI18n } from '../i18n/I18n'
+import { copyScoreMessage, preloadScoreCard, prepareScoreCard, presentScoreCard, type ScoreCard } from '../shareScore'
 import Scene3D, { aimCamera3, CAMERA3D } from './Scene3D'
 import { useRunAssets } from './useRunAssets'
 import { createWorld3, flap3, readSnap3, revive3, writeSnap3, W3, type Mode3D, type Snap3, type Tick3, type World3 } from './world3d'
@@ -64,8 +65,9 @@ export default function Game3D({
   const reviveCountRef = useRef(0)
   const [countLabel, setCountLabel] = useState<string | null>(isCoop ? '3' : null)
   const [waiting, setWaiting] = useState(!isCoop)
-  const [sharing, setSharing] = useState(false)
   const [shareMsg, setShareMsg] = useState<string | null>(null)
+  const shareTimer = useRef<number | null>(null)
+  const shareCardRef = useRef<ScoreCard | null>(null)
 
   const activeRef = useRef(false)
   const pausedRef = useRef(false)
@@ -77,6 +79,19 @@ export default function Game3D({
   useEffect(() => {
     activeRef.current = Boolean(assets) && phase === 'playing' && !paused && !worldRef.current.over && !countdownRef.current && !offerRevive
   }, [assets, phase, paused, offerRevive])
+
+  const gameplayLive = Boolean(assets) && phase === 'playing' && !paused && !offerRevive && countLabel === null
+  const midgameSent = useRef(false)
+  useEffect(() => {
+    if (gameplayLive) markGameplayStart()
+    else markGameplayStop()
+    return () => markGameplayStop()
+  }, [gameplayLive])
+  useEffect(() => {
+    if (phase !== 'over' || midgameSent.current) return
+    midgameSent.current = true
+    void showMidgameAd()
+  }, [phase])
 
   const settle = useCallback(() => {
     if (settledRef.current) return
@@ -295,25 +310,53 @@ export default function Game3D({
     return () => document.removeEventListener('visibilitychange', onVis)
   }, [])
 
-  const shareScore = async () => {
-    if (sharing) return
-    setSharing(true)
-    setShareMsg(null)
-    const text = `I scored ${hud.score} in Pastaoli 3D!`
-    try {
-      const nav = navigator as Navigator & { share?: (d: ShareData) => Promise<void> }
-      if (nav.share) {
-        await nav.share({ title: 'Pastaoli', text })
-        setShareMsg('Shared!')
-      } else {
-        await navigator.clipboard.writeText(text)
-        setShareMsg('Copied to clipboard')
-      }
-    } catch {
-      setShareMsg('Share cancelled')
-    } finally {
-      setSharing(false)
+  const showShareFeedback = (message: string) => {
+    setShareMsg(message)
+    if (shareTimer.current != null) window.clearTimeout(shareTimer.current)
+    shareTimer.current = window.setTimeout(() => {
+      setShareMsg(null)
+      shareTimer.current = null
+    }, 2500)
+  }
+
+  useEffect(() => () => {
+    if (shareTimer.current != null) window.clearTimeout(shareTimer.current)
+  }, [])
+
+  const localChar = CHARACTERS.find((c) => c.id === selected) ?? CHARACTERS[0]
+  const shareWorn = equipped[localChar.id]
+  useEffect(() => {
+    if (phase !== 'over') return
+    return preloadScoreCard({
+      score: hud.score,
+      coins: summary?.totalReward ?? hud.coins,
+      characterName: localChar.name,
+      characterId: localChar.id,
+      equipped: shareWorn,
+    }, (card) => { shareCardRef.current = card })
+  }, [phase, hud.score, hud.coins, summary?.totalReward, localChar.id, localChar.name, shareWorn])
+
+  const shareScore = (e: MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation()
+    e.preventDefault()
+    copyScoreMessage(hud.score, localChar.name)
+    showShareFeedback('Score copied!')
+    const spec = {
+      score: hud.score,
+      coins: summary?.totalReward ?? hud.coins,
+      characterName: localChar.name,
+      characterId: localChar.id,
+      equipped: shareWorn,
     }
+    const ready = shareCardRef.current
+    if (ready) {
+      presentScoreCard(ready)
+      return
+    }
+    void prepareScoreCard(spec).then((card) => {
+      shareCardRef.current = card
+      presentScoreCard(card)
+    })
   }
 
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
@@ -445,7 +488,7 @@ export default function Game3D({
         )}
 
         {phase === 'over' && (
-          <div className="game-over-slide absolute inset-0 z-[100] bg-[#0a0510]/95 backdrop-blur-xl flex flex-col items-center justify-center p-6" onPointerDown={(e) => e.stopPropagation()}>
+          <div className="game-over-slide pointer-events-auto absolute inset-0 z-[100] bg-[#0a0510]/95 backdrop-blur-xl flex flex-col items-center justify-center p-6" onPointerDown={(e) => e.stopPropagation()}>
             <h2 className="text-6xl font-black text-white mb-2 drop-shadow-xl text-center">{isCoop ? 'TEAM OVER' : t('game.over')}</h2>
             {summary?.isNewBest && <p className="mb-6 text-xl font-black text-[#ffd24d] animate-pulse">🏆 NEW RECORD!</p>}
             <div className="flex flex-col sm:flex-row gap-4 w-full max-w-xl mb-6">
@@ -461,8 +504,8 @@ export default function Game3D({
               <button onClick={onReplay} className="flex-1 rounded-[32px] bg-[#6ee7a8] py-5 text-xl font-black uppercase text-[#170d24] shadow-lg">{t('game.replay')}</button>
               <button onClick={onClose} className="flex-1 rounded-[32px] bg-white/10 py-5 text-xl font-black uppercase text-white border border-white/20">{t('game.menu')}</button>
             </div>
-            <button onClick={shareScore} disabled={sharing} className="mt-4 w-full max-w-xl rounded-[28px] bg-[#8ec5ff]/15 border border-[#8ec5ff]/40 py-4 text-lg font-black uppercase text-[#8ec5ff] disabled:opacity-50 flex items-center justify-center gap-2">
-              {sharing ? 'Generating…' : '📤 Share Score'}
+            <button type="button" onPointerDown={(e) => e.stopPropagation()} onClick={shareScore} className="pointer-events-auto relative z-30 mt-4 w-full max-w-xl rounded-[28px] bg-[#8ec5ff]/15 border border-[#8ec5ff]/40 py-4 text-lg font-black uppercase text-[#8ec5ff] flex items-center justify-center gap-2">
+              {shareMsg ?? '📤 Share Score'}
             </button>
             {shareMsg && <p className="mt-3 text-sm font-bold text-white/70">{shareMsg}</p>}
           </div>

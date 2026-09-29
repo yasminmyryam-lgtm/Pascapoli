@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { COSMETICS } from './cosmetics'
 import { isFounder, useActions, useGameState, spinRemaining } from './store'
 import { sfx } from './sfx'
-import { playRewardedAdSequence } from './ads/adService'
+import { showRewardedAd } from './ads/adService'
 import { authorizeDouble } from './economy/economyApi'
 
 type Prize = { id: string; label: string; color: string; coins?: number; diamonds?: number; xp?: number; cosmetic?: boolean }
@@ -100,10 +100,10 @@ export default function LuckyWheel({ onClose }: { onClose: () => void }) {
     if (spinning || pending || busy) return
     setBusy(true)
     setError(null)
-    const watched = await playRewardedAdSequence(2)
+    const watched = await showRewardedAd()
     setBusy(false)
     if (!watched) {
-      setError('Watch both ads for an extra spin.')
+      setError('Watch the ad for an extra spin.')
       return
     }
     spin(false)
@@ -113,9 +113,9 @@ export default function LuckyWheel({ onClose }: { onClose: () => void }) {
     if (!pending || claimed || busy) return
     if (doubled) {
       setBusy(true)
-      const watched = await playRewardedAdSequence(2)
+      const watched = await showRewardedAd()
       if (!watched) {
-        setError('Watch both ads to double the prize.')
+        setError('Watch the ad to double the prize.')
         setBusy(false)
         return
       }

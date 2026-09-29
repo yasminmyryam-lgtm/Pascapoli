@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useRef, useState, useCallback, type ReactElement } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback, type MouseEvent } from 'react'
 import { CHARACTERS } from './characters'
-import { AccessoryArt, CharacterComposite, CharacterView, TYPE_LABEL, cosmeticById, measureFitScale } from './cosmetics'
+import { AccessoryArt, CharacterView, TYPE_LABEL, cosmeticById } from './cosmetics'
+import { copyScoreMessage, preloadScoreCard, prepareScoreCard, presentScoreCard, type ScoreCard } from './shareScore'
 import { OBSTACLES } from './obstacles'
 import { useActions, useGameState, type ChestDrop, type GameReward } from './store'
 import { sfx } from './sfx'
 import type { CoopConfig } from './coopConfig'
-import { playRewardedAdSequence, showRewardedAd } from './ads/adService'
+import { markGameplayStart, markGameplayStop, showMidgameAd, showRewardedAd } from './ads/adService'
 import { authorizeDouble, chargeReviveDiamonds, isAdRevive } from './economy/economyApi'
 import ReviveOffer from './economy/ReviveOffer'
 import { creditRelaySender } from './economy/economyApi'
@@ -255,8 +256,9 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
   const [shake, setShake] = useState(false)
   const [dying, setDying] = useState(false)
   const [particles, setParticles] = useState<{ id: number; x: number; y: number }[]>([])
-  const [sharing, setSharing] = useState(false)
   const [shareMsg, setShareMsg] = useState<string | null>(null)
+  const shareTimer = useRef<number | null>(null)
+  const shareCardRef = useRef<ScoreCard | null>(null)
   const [relayToast, setRelayToast] = useState<string | null>(null)
   const [relayHold, setRelayHold] = useState(Boolean(relay))
   const relayHoldRef = useRef(Boolean(relay))
@@ -268,6 +270,18 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
   const [view, setView] = useState<PlayView>({ w: GAME_WIDTH, h: GAME_HEIGHT, scale: 1, xScale: 1 })
   const [, forceReactRender] = useState(0)
   const rerender = useCallback(() => forceReactRender(n => (n + 1) % 1_000_000), [])
+  const gameplayLive = phase === 'playing' && !paused && !offerRevive && countLabel === null && !relayHold
+  const midgameSent = useRef(false)
+  useEffect(() => {
+    if (gameplayLive) markGameplayStart()
+    else markGameplayStop()
+    return () => markGameplayStop()
+  }, [gameplayLive])
+  useEffect(() => {
+    if (phase !== 'over' || midgameSent.current) return
+    midgameSent.current = true
+    void showMidgameAd()
+  }, [phase])
   const frameRef = useRef<HTMLDivElement>(null)
   const metricsRef = useRef<PlayView>(view)
 
@@ -738,25 +752,31 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
     prevChestsRef.current = chestsHudV
   }, [chestsHudV])
 
-  // Compose a shareable score card (equipped ghost + score) as an SVG → PNG.
-  const buildShareSVG = (renderToStaticMarkup: (n: ReactElement) => string) => {
-    const eq = equipped[p1CharData.id] ?? {}
-    const box = 'x="180" y="162" width="240" height="240"'
-    // Same composite the player sees, just nested into the card at a fixed box.
-    const art = renderToStaticMarkup(<CharacterComposite charId={p1CharData.id} equipped={eq} fitScale={measureFitScale(p1CharData.id, eq)} />).replace(
-      '<svg ',
-      `<svg ${box} `,
-    )
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">
-      <defs><radialGradient id="shareBg" cx="50%" cy="28%" r="90%"><stop offset="0%" stop-color="#301e4d"/><stop offset="100%" stop-color="#100818"/></radialGradient></defs>
-      <rect width="600" height="600" rx="36" fill="url(#shareBg)"/>
-      <text x="300" y="78" text-anchor="middle" font-family="Fredoka, Nunito, sans-serif" font-size="36" font-weight="700" fill="#ffd24d">PASTAPOLI</text>
-      ${art}
-      <text x="300" y="470" text-anchor="middle" font-family="Fredoka, Nunito, sans-serif" font-size="22" letter-spacing="4" fill="#8ec5ff">${isCoop ? 'TEAM SCORE' : 'SCORE'}</text>
-      <text x="300" y="540" text-anchor="middle" font-family="Fredoka, Nunito, sans-serif" font-size="80" font-weight="800" fill="#ffffff">${scoreV}</text>
-      <text x="300" y="576" text-anchor="middle" font-family="Fredoka, Nunito, sans-serif" font-size="22" fill="#ffe6a3">+${summary?.totalReward ?? coinsHudV} coins</text>
-    </svg>`
+  const showShareFeedback = (message: string) => {
+    setShareMsg(message)
+    if (shareTimer.current != null) window.clearTimeout(shareTimer.current)
+    shareTimer.current = window.setTimeout(() => {
+      setShareMsg(null)
+      shareTimer.current = null
+    }, 2500)
   }
+
+  useEffect(() => () => {
+    if (shareTimer.current != null) window.clearTimeout(shareTimer.current)
+  }, [])
+
+  const shareChar = guest ? p2CharData : p1CharData
+  const shareWorn = equipped[shareChar.id]
+  useEffect(() => {
+    if (phase !== 'over') return
+    return preloadScoreCard({
+      score: scoreV,
+      coins: summary?.totalReward ?? coinsHudV,
+      characterName: shareChar.name,
+      characterId: shareChar.id,
+      equipped: shareWorn,
+    }, (card) => { shareCardRef.current = card })
+  }, [phase, scoreV, coinsHudV, summary?.totalReward, shareChar.id, shareChar.name, shareWorn])
 
   const shareRelayRun = async () => {
     const senderId = accountId || 'guest'
@@ -783,39 +803,27 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
     window.setTimeout(() => setRelayToast(null), 2600)
   }
 
-  const shareScore = async () => {
-    if (sharing) return
-    setSharing(true); setShareMsg(null)
-    try {
-      const { renderToStaticMarkup } = await import('react-dom/server')
-      const svg = buildShareSVG(renderToStaticMarkup)
-      const img = new Image()
-      await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg) })
-      const canvas = document.createElement('canvas')
-      canvas.width = 600; canvas.height = 600
-      const ctx = canvas.getContext('2d')
-      if (!ctx) throw new Error('no 2d context')
-      ctx.drawImage(img, 0, 0, 600, 600)
-      const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/png'))
-      if (!blob) throw new Error('no blob')
-      const file = new File([blob], 'pastapoli-score.png', { type: 'image/png' })
-      const nav = navigator as Navigator & { canShare?: (d: unknown) => boolean; share?: (d: unknown) => Promise<void> }
-      if (nav.canShare && nav.share && nav.canShare({ files: [file] })) {
-        await nav.share({ files: [file], title: 'Pastapoli', text: `I scored ${scoreV} points in Pastapoli! 🍝` })
-        setShareMsg('Shared! 🎉')
-      } else {
-        const a = document.createElement('a')
-        a.href = URL.createObjectURL(blob); a.download = 'pastapoli-score.png'; a.click()
-        URL.revokeObjectURL(a.href)
-        setShareMsg('Image downloaded! 📥')
-      }
-    } catch (err) {
-      console.error('Share failed:', err)
-      setShareMsg('Sharing failed')
-    } finally {
-      setSharing(false)
-      window.setTimeout(() => setShareMsg(null), 2600)
+  const shareScore = (e: MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation()
+    e.preventDefault()
+    copyScoreMessage(scoreV, shareChar.name)
+    showShareFeedback('Score copied!')
+    const spec = {
+      score: scoreV,
+      coins: summary?.totalReward ?? coinsHudV,
+      characterName: shareChar.name,
+      characterId: shareChar.id,
+      equipped: shareWorn,
     }
+    const ready = shareCardRef.current
+    if (ready) {
+      presentScoreCard(ready)
+      return
+    }
+    void prepareScoreCard(spec).then((card) => {
+      shareCardRef.current = card
+      presentScoreCard(card)
+    })
   }
 
   return (
@@ -954,7 +962,7 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
         )}
 
         {phase === 'over' && (
-          <div className="game-over-slide absolute inset-0 bg-[#0a0510]/95 backdrop-blur-xl flex flex-col items-center justify-center z-[100] p-6">
+          <div className="game-over-slide pointer-events-auto absolute inset-0 bg-[#0a0510]/95 backdrop-blur-xl flex flex-col items-center justify-center z-[100] p-6" onPointerDown={(e) => e.stopPropagation()}>
             <h2 className="text-6xl font-black text-white mb-2 drop-shadow-xl text-center">{isCoop ? 'TEAM OVER' : t('game.over')}</h2>
             {summary?.isNewBest && <p className="mb-6 text-xl font-black text-[#ffd24d] animate-pulse">🏆 NEW RECORD!</p>}
             <div className="flex flex-col sm:flex-row gap-4 w-full max-w-xl mb-6">
@@ -982,8 +990,8 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
               </button>
             )}
             {relayToast && <p className="mt-3 text-sm font-black text-[#ffd24d]">{relayToast}</p>}
-            <button onClick={shareScore} disabled={sharing} className="mt-4 w-full max-w-xl rounded-[28px] bg-[#8ec5ff]/15 border border-[#8ec5ff]/40 py-4 text-lg font-black uppercase text-[#8ec5ff] disabled:opacity-50 flex items-center justify-center gap-2">
-              {sharing ? 'Generating…' : '📤 Share Score'}
+            <button type="button" onPointerDown={(e) => e.stopPropagation()} onClick={shareScore} className="pointer-events-auto relative z-30 mt-4 w-full max-w-xl rounded-[28px] bg-[#8ec5ff]/15 border border-[#8ec5ff]/40 py-4 text-lg font-black uppercase text-[#8ec5ff] flex items-center justify-center gap-2">
+              {shareMsg ?? '📤 Share Score'}
             </button>
             {shareMsg && <p className="mt-3 text-sm font-bold text-white/70">{shareMsg}</p>}
           </div>
@@ -1019,9 +1027,9 @@ export function UnboxingOverlay({ count, onDone }: { count: number; onDone: () =
     setBusy(true)
     setAdError(null)
     setStage('watching')
-    const watched = await playRewardedAdSequence(2)
+    const watched = await showRewardedAd()
     if (!watched) {
-      setAdError('Watch both ads to open this gift.')
+      setAdError('Watch the ad to open this gift.')
       setStage('idle')
       setBusy(false)
       return
@@ -1048,9 +1056,9 @@ export function UnboxingOverlay({ count, onDone }: { count: number; onDone: () =
     if (!pending || claimed || busy) return
     if (doubled) {
       setBusy(true)
-      const watched = await playRewardedAdSequence(2)
+      const watched = await showRewardedAd()
       if (!watched) {
-        setAdError('Watch both ads to double the rewards.')
+        setAdError('Watch the ad to double the rewards.')
         setBusy(false)
         return
       }

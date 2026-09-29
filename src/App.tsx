@@ -21,6 +21,7 @@ import { disableGuestPlay, useGuestPlay } from './auth/guestPlay'
 import { useProfile } from './profile/useProfile'
 import { CREDENTIAL_RULES } from './lib/validation'
 import { claimRelayRewards, syncWallet } from './economy/economyApi'
+import { notifyShellReady } from './ads/adService'
 import { captureRelay, clearPendingRelay, loadPendingRelay, relayBlocks, urlHasAuthCallback, type RelayRun } from './relay'
 import { useI18n } from './i18n/I18n'
 import LanguageMenu from './i18n/LanguageMenu'
@@ -121,6 +122,10 @@ export default function App() {
 
   // Point the local save cache at the signed-in account. Runs before the first
   // paint of the authenticated UI so no other account's balance is ever shown.
+  useEffect(() => {
+    if (sessionStatus !== 'LOADING') notifyShellReady()
+  }, [sessionStatus])
+
   useEffect(() => {
     if (sessionStatus === 'LOADING') return
     setActiveSession(userId, email)
