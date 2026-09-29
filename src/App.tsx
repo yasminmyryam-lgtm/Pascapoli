@@ -456,9 +456,7 @@ export default function App() {
               <button onClick={() => handleGameLaunch('NORMAL')} className="bg-[#6ee7a8] text-[#170d24] py-4 rounded-2xl font-black uppercase">▶ {t('button.play')}</button>
               <button onClick={() => setCustomizeId(activeChar.id)} className="bg-[#412e61] text-white py-4 rounded-2xl font-black uppercase">👕 {t('button.shop')}</button>
               <button onClick={() => setShowChallengePopup(true)} className="bg-[#ff7ad9] text-[#170d24] py-4 rounded-2xl font-black uppercase">🔥 {t('button.hard')}</button>
-              {viewMode === '2D' && (
-                <button onClick={() => { relayHandled.current = true; clearPendingRelay(); setPendingRelay(null); setActiveRelay(null); setNetworkRole(null); setCoopConfig(prev => ({ ...prev, p1Char: selected, p2Char: selected })); setShowNetworkLobby(true); }} className="bg-[#8ec5ff] text-[#170d24] py-4 rounded-2xl font-black uppercase">🤝 {t('button.coop')}</button>
-              )}
+              <button onClick={() => { relayHandled.current = true; clearPendingRelay(); setPendingRelay(null); setActiveRelay(null); setNetworkRole(null); setCoopConfig(prev => ({ ...prev, isHost: true, p1Char: selected, p2Char: selected })); setShowNetworkLobby(true); }} className="bg-[#8ec5ff] text-[#170d24] py-4 rounded-2xl font-black uppercase">🤝 {t('button.coop')}</button>
             </div>
           </div>
         </div>
@@ -568,6 +566,8 @@ export default function App() {
             <h2 className="text-4xl font-black text-white mb-8">Multiplayer P2P</h2>
             {!networkRole && (
               <div className="flex flex-col gap-4">
+                <button onClick={() => executeCoopLaunch('P1')} className="bg-[#ffd24d] py-6 rounded-3xl font-black text-xl text-[#123]">Play together on this device</button>
+                <p className="text-sm font-bold text-white/60">Left side or Space = Player 1. Right side, W, or ↑ = Player 2.</p>
                 <button onClick={initializeHostServer} className="bg-[#8ec5ff] py-6 rounded-3xl font-black text-xl text-[#123]">Create Room (Host)</button>
                 <button onClick={() => { setNetworkRole('GUEST'); setCoopConfig(prev => ({ ...prev, isHost: false, p2Char: selected })); }} className="bg-[#6ee7a8] py-6 rounded-3xl font-black text-xl text-[#123]">Join with Code (Guest)</button>
               </div>
@@ -620,7 +620,7 @@ export default function App() {
       {isGameEngineMounted && (
         <div className="fixed inset-0 z-[1000] bg-black">
            <ErrorBoundary onClose={() => { setIsGameEngineMounted(false); terminateNetworkSession(); }}>
-             {viewMode === '3D' && activeEngineMode !== 'COOP' && !activeRelay ? (
+             {viewMode === '3D' && !activeRelay ? (
                <Suspense fallback={<div className="fixed inset-0 grid place-items-center bg-black"><p className="text-2xl font-black text-white animate-pulse">Loading 3D…</p></div>}>
                  <Game3D
                    key={gameSessionId}

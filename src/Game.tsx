@@ -462,22 +462,38 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
   }, [reviveBusy, diamonds, isCoop, send])
 
   // --- INPUT ---
-  const dispatchJumpAction = useCallback(() => {
+  // Solo: Space, ArrowUp, W, or a tap flaps the one bird.
+  // Co-op host: Space / left half = P1, W or ArrowUp / right half = P2.
+  // Co-op guest: every local input sends FLAP, which the host applies to P2.
+  const flapLocal = useCallback((who: 1 | 2) => {
     if (phase === 'over' || phase === 'unboxing' || offerRevive || pausedRef.current) return
     if (relayHoldRef.current) {
       relayHoldRef.current = false
       setRelayHold(false)
     }
     haptic(8); sfx.flap()
-    if (guest) { send({ opCode: 'FLAP' }); return }   // guest only sends intent
-    p1Vel.current = PHYSICS.FLAP_POWER * metricsRef.current.scale
-  }, [phase, guest, send])
+    if (guest) { send({ opCode: 'FLAP' }); return }
+    const power = PHYSICS.FLAP_POWER * metricsRef.current.scale
+    if (isCoop && who === 2) p2Vel.current = power
+    else p1Vel.current = power
+  }, [phase, guest, send, isCoop, offerRevive])
 
   useEffect(() => {
-    const keyHandler = (e: KeyboardEvent) => { if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); dispatchJumpAction() } }
+    const keyHandler = (e: KeyboardEvent) => {
+      if (e.repeat) return
+      if (isCoop && !guest) {
+        if (e.code === 'Space') { e.preventDefault(); flapLocal(1) }
+        else if (e.code === 'ArrowUp' || e.code === 'KeyW') { e.preventDefault(); flapLocal(2) }
+        return
+      }
+      if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
+        e.preventDefault()
+        flapLocal(1)
+      }
+    }
     window.addEventListener('keydown', keyHandler)
     return () => window.removeEventListener('keydown', keyHandler)
-  }, [dispatchJumpAction])
+  }, [flapLocal, isCoop, guest])
 
   // Lock page scroll/overscroll while the overlay playfield is up.
   useEffect(() => {
@@ -828,7 +844,17 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
 
   return (
     <div className="game-shell font-display selection:bg-transparent">
-      <div ref={frameRef} className={`game-stage bg-[#11091c] ${shake ? 'screen-shake' : ''}`} style={{ background: activeEnvironment.backgroundStyle, WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none', WebkitTapHighlightColor: 'transparent' }} onContextMenu={(e) => e.preventDefault()} onPointerDown={(e) => { e.preventDefault(); dispatchJumpAction() }}>
+      <div ref={frameRef} className={`game-stage bg-[#11091c] ${shake ? 'screen-shake' : ''}`} style={{ background: activeEnvironment.backgroundStyle, WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none', WebkitTapHighlightColor: 'transparent' }} onContextMenu={(e) => e.preventDefault()} onPointerDown={(e) => {
+        if ((e.target as HTMLElement).closest('button, a, input, textarea')) return
+        e.preventDefault()
+        if (isCoop && !guest) {
+          const rect = e.currentTarget.getBoundingClientRect()
+          const onRight = rect.width > 0 && e.clientX - rect.left > rect.width / 2
+          flapLocal(onRight ? 2 : 1)
+          return
+        }
+        flapLocal(1)
+      }}>
         {activeEnvironment.Background && <activeEnvironment.Background />}
 
         <div className="game-world">
@@ -907,7 +933,7 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
         </div>
 
         {countLabel && phase === 'playing' && (
-          <div className="absolute inset-0 flex items-center justify-center z-[93] bg-black/30">
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center z-[93] bg-black/30">
             <span key={countLabel} className="countdown-pop font-black text-white drop-shadow-[0_6px_24px_rgba(0,0,0,0.6)]" style={{ fontSize: countLabel === 'GO!' ? '6rem' : '9rem', color: countLabel === 'GO!' ? '#6ee7a8' : '#ffffff' }}>
               {countLabel}
             </span>
@@ -915,7 +941,7 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
         )}
 
         {waitingForHost && !countLabel && (
-          <div className="absolute inset-0 flex items-center justify-center z-[90] bg-black/40">
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center z-[90] bg-black/40">
             <p className="text-2xl font-black text-white animate-pulse">Syncing with host...</p>
           </div>
         )}

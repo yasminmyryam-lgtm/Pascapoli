@@ -74,7 +74,7 @@ export default function Game3D({
   const countdownRef = useRef(isCoop)
   const settledRef = useRef(false)
   const pitchRef = useRef(0)
-  const drag = useRef<{ y: number; tilting: boolean } | null>(null)
+  const drag = useRef<{ y: number; tilting: boolean; player: 1 | 2 } | null>(null)
 
   useEffect(() => {
     activeRef.current = Boolean(assets) && phase === 'playing' && !paused && !worldRef.current.over && !countdownRef.current && !offerRevive
@@ -184,7 +184,7 @@ export default function Game3D({
     }
   }, [reviveBusy, diamonds, isCoop, isHost, connection])
 
-  const flap = useCallback(() => {
+  const flapWho = useCallback((who: 1 | 2) => {
     if (phase !== 'playing' || pausedRef.current || worldRef.current.over || countdownRef.current || offerRevive) return
     haptic(8)
     sfx.flap()
@@ -194,8 +194,10 @@ export default function Game3D({
       try { connection?.send({ opCode: '3D_FLAP' }) } catch {}
       return
     }
-    flap3(worldRef.current, 1)
-  }, [phase, guest, connection, offerRevive])
+    flap3(worldRef.current, isCoop && who === 2 ? 2 : 1)
+  }, [phase, guest, connection, offerRevive, isCoop])
+
+  const flap = useCallback(() => flapWho(1), [flapWho])
 
   useEffect(() => {
     if (!connection) return
@@ -274,6 +276,11 @@ export default function Game3D({
   useEffect(() => {
     const held = { up: false, down: false }
     const onKey = (e: KeyboardEvent) => {
+      if (e.code === 'KeyW' && isCoop && isHost) {
+        e.preventDefault()
+        if (e.type === 'keydown' && !e.repeat) flapWho(2)
+        return
+      }
       if (e.code === 'Space') {
         e.preventDefault()
         if (e.type === 'keydown' && !e.repeat) flap()
@@ -298,7 +305,7 @@ export default function Game3D({
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('keyup', onKey)
     }
-  }, [flap])
+  }, [flap, flapWho, isCoop, isHost])
 
   useEffect(() => {
     const onVis = () => {
@@ -360,11 +367,19 @@ export default function Game3D({
   }
 
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
-    drag.current = { y: e.clientY, tilting: false }
+    if ((e.target as HTMLElement).closest('button, a, input, textarea')) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    const right = isCoop && isHost && rect.width > 0 && e.clientX - rect.left > rect.width / 2
+    if (right) {
+      drag.current = { y: e.clientY, tilting: true, player: 2 }
+      flapWho(2)
+      return
+    }
+    drag.current = { y: e.clientY, tilting: false, player: 1 }
   }
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
     const d = drag.current
-    if (!d) return
+    if (!d || d.player === 2) return
     const dy = d.y - e.clientY
     if (Math.abs(dy) > 10) d.tilting = true
     if (d.tilting) {
@@ -375,7 +390,7 @@ export default function Game3D({
   const onPointerUp = () => {
     const d = drag.current
     drag.current = null
-    if (d && !d.tilting) flap()
+    if (d && d.player === 1 && !d.tilting) flap()
   }
 
   const spawnLane = isCoop ? (local === 1 ? -W3.LANE : W3.LANE) : 0
