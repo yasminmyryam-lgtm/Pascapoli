@@ -10,7 +10,7 @@ const PRIZES: Prize[] = [
   { id: 'c100', label: '+100', color: '#6ee7a8', coins: 100 },
   { id: 'xp50', label: '+50\nXP', color: '#8ec5ff', xp: 50 },
   { id: 'c250', label: '+250', color: '#b98bff', coins: 250 },
-  { id: 'cos', label: 'COSMETIC\nITEM', color: '#ff7ad9', cosmetic: true },
+  { id: 'cos', label: 'SKIN', color: '#ff7ad9', cosmetic: true },
   { id: 'c500', label: '+500', color: '#ff9d6b', coins: 500 },
   { id: 'again', label: 'TRY\nAGAIN', color: '#5a4a70' },
   { id: 'c1000', label: '+1000', color: '#ffd24d', coins: 1000 },
@@ -18,6 +18,39 @@ const PRIZES: Prize[] = [
 ]
 
 const SEG = 360 / PRIZES.length
+const SLICE_RIM = 94
+const LABEL_EDGE_PAD = 12
+const LABEL_HALF = (SEG / 2) * (Math.PI / 180)
+
+function sliceLines(label: string): string[] {
+  return label.split('\n').flatMap((part) => {
+    const words = part.trim().split(/\s+/).filter(Boolean)
+    if (words.length <= 1) return words
+    const mid = Math.ceil(words.length / 2)
+    return [words.slice(0, mid).join(' '), words.slice(mid).join(' ')]
+  })
+}
+
+function layoutSliceText(label: string) {
+  const lines = sliceLines(label)
+  const tan = Math.tan(LABEL_HALF)
+  const outerLimit = SLICE_RIM - LABEL_EDGE_PAD
+  let fontSize = 10
+  while (fontSize >= 6) {
+    const lineGap = fontSize * 1.15
+    const width = Math.max(...lines.map((line) => line.length * fontSize * 0.62), 1)
+    const height = lineGap * Math.max(lines.length, 1)
+    const halfW = width / 2
+    const halfH = height / 2
+    const minRadius = halfH + halfW / tan + 4
+    const maxRadius = Math.sqrt(Math.max(0, outerLimit * outerLimit - halfW * halfW)) - halfH
+    if (minRadius <= maxRadius) {
+      return { lines, fontSize, radius: Math.min(Math.max(minRadius, 56), maxRadius), lineGap }
+    }
+    fontSize -= 0.5
+  }
+  return { lines, fontSize: 6, radius: 52, lineGap: 7 }
+}
 function fmt(ms: number) {
   const s = Math.ceil(ms / 1000); const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); const sec = s % 60
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
@@ -155,14 +188,19 @@ export default function LuckyWheel({ onClose }: { onClose: () => void }) {
           <svg viewBox="0 0 200 200" className="h-64 w-64 drop-shadow-[0_10px_30px_rgba(255,122,217,0.35)]" style={{ transform: `rotate(${angle}deg)`, transition: spinning ? 'transform 4.1s cubic-bezier(0.16,1,0.3,1)' : 'none' }}>
             <circle cx="100" cy="100" r="98" fill="#1a0d2e" />
             {PRIZES.map((p, i) => {
-              const a0 = (i * SEG - 90 - SEG / 2) * (Math.PI / 180); const a1 = ((i + 1) * SEG - 90 - SEG / 2) * (Math.PI / 180); const r = 94
+              const a0 = (i * SEG - 90 - SEG / 2) * (Math.PI / 180); const a1 = ((i + 1) * SEG - 90 - SEG / 2) * (Math.PI / 180); const r = SLICE_RIM
               const x0 = 100 + r * Math.cos(a0); const y0 = 100 + r * Math.sin(a0); const x1 = 100 + r * Math.cos(a1); const y1 = 100 + r * Math.sin(a1)
-              const mid = (i * SEG - 90) * (Math.PI / 180); const tx = 100 + 60 * Math.cos(mid); const ty = 100 + 60 * Math.sin(mid)
+              const mid = (i * SEG - 90) * (Math.PI / 180)
+              const laid = layoutSliceText(p.label)
+              const tx = 100 + laid.radius * Math.cos(mid); const ty = 100 + laid.radius * Math.sin(mid)
+              const block = laid.lineGap * (laid.lines.length - 1)
               return (
                 <g key={p.id}>
                   <path d={`M100 100 L${x0} ${y0} A${r} ${r} 0 0 1 ${x1} ${y1} Z`} fill={p.color} stroke="#1a0d2e" strokeWidth="1.5" />
-                  <text x={tx} y={ty} fill={p.id === 'again' ? '#fff' : '#1a0d2e'} fontSize="11" fontWeight="700" fontFamily="sans-serif" textAnchor="middle" transform={`rotate(${i * SEG} ${tx} ${ty})`}>
-                    {p.label.split('\n').map((line, li) => (<tspan key={li} x={tx} dy={li === 0 ? 0 : 11}>{line}</tspan>))}
+                  <text fill={p.id === 'again' ? '#fff' : '#1a0d2e'} fontSize={laid.fontSize} fontWeight="700" fontFamily="sans-serif" textAnchor="middle" dominantBaseline="central" transform={`rotate(${i * SEG} ${tx} ${ty})`}>
+                    {laid.lines.map((line, li) => (
+                      <tspan key={li} x={tx} y={ty - block / 2 + li * laid.lineGap}>{line}</tspan>
+                    ))}
                   </text>
                 </g>
               )
