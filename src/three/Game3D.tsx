@@ -80,7 +80,7 @@ export default function Game3D({
     activeRef.current = Boolean(assets) && phase === 'playing' && !paused && !worldRef.current.over && !countdownRef.current && !offerRevive
   }, [assets, phase, paused, offerRevive])
 
-  const gameplayLive = Boolean(assets) && phase === 'playing' && !paused && !offerRevive && countLabel === null
+  const gameplayLive = Boolean(assets) && phase === 'playing' && !paused && !offerRevive && countLabel === null && !waiting
   const midgameSent = useRef(false)
   useEffect(() => {
     if (gameplayLive) markGameplayStart()

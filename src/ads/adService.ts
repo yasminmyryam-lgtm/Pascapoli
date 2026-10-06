@@ -6,7 +6,7 @@
  * failed init never grants a reward in a production build. `vite` dev may
  * show a local countdown so revive can be tested without the portal.
  */
-import { isMuted, setMuted } from '../sfx'
+import { beginAdMute, endAdMute } from '../sfx'
 
 type RewardedAdCallbacks = {
   adFinished?: () => void
@@ -181,19 +181,18 @@ export async function showRewardedAd(): Promise<boolean> {
     return false
   }
 
-  const wasMuted = isMuted()
   return new Promise((resolve) => {
     let settled = false
     const finish = (ok: boolean) => {
       if (settled) return
       settled = true
-      if (!wasMuted) setMuted(false)
+      endAdMute()
       resolve(ok)
     }
     try {
       requestAd.call(window.CrazyGames!.SDK!.ad, 'rewarded', {
         adStarted: () => {
-          if (!wasMuted) setMuted(true)
+          beginAdMute()
         },
         adFinished: () => finish(true),
         adError: (error) => {
@@ -219,11 +218,14 @@ export async function showMidgameAd(): Promise<void> {
       const done = () => {
         if (settled) return
         settled = true
+        endAdMute()
         resolve()
       }
       try {
         requestAd.call(window.CrazyGames!.SDK!.ad, 'midgame', {
-          adStarted: () => {},
+          adStarted: () => {
+            beginAdMute()
+          },
           adFinished: () => done(),
           adError: () => done(),
         })

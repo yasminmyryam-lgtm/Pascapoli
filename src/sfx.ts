@@ -76,4 +76,23 @@ export function setMuted(v: boolean) {
   muted = v
   try { localStorage.setItem(MUTE_KEY, v ? '1' : '0') } catch {}
 }
+
+/** Silence SFX for an ad without writing the saved mute preference. */
+let adHolds = 0
+let muteBeforeAd: boolean | null = null
+
+export function beginAdMute() {
+  if (adHolds === 0) muteBeforeAd = muted
+  adHolds += 1
+  muted = true
+}
+
+export function endAdMute() {
+  if (adHolds === 0) return
+  adHolds -= 1
+  if (adHolds === 0 && muteBeforeAd !== null) {
+    muted = muteBeforeAd
+    muteBeforeAd = null
+  }
+}
 export function toggleMuted() { setMuted(!muted); return muted }

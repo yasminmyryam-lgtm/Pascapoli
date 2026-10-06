@@ -797,7 +797,7 @@ export default function App() {
                    coopConfig={coopConfig}
                    connection={liveConnection}
                    onClose={() => { setIsGameEngineMounted(false); terminateNetworkSession(); }}
-                   onReplay={() => { if (activeEngineMode === 'COOP' && dataConnection.current) { dataConnection.current.send({ opCode: 'REPLAY_REQ' }) }; setGameSessionId(Date.now()) }}
+                   onReplay={() => { setGameSessionId(Date.now()) }}
                  />
                </Suspense>
              ) : (

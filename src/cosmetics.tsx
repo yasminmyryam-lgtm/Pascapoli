@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState, type CSSProperties, type JSX } from 
 import { renderToStaticMarkup } from 'react-dom/server'
 import { isAccessoryCompatible } from './accessoryCompatibility'
 import { offsetFor } from './accessoryOffsets'
+import { characterPublicSrc } from './art/portraits'
 import { anchorsFor, bodyFor, characterById } from './characters'
 import { fitCacheKey, fitScaleFromBBox, fitTransform, peekFitScale, rememberFitScale, silhouetteScale } from './art/fit'
 import { ART_CONTENT_TRANSFORM, ART_SCALE, ART_VIEW_BOX, DEFAULT_ANCHORS, type AnchorName, type CharacterAnchors } from './art/kit'
@@ -735,7 +736,7 @@ function baseBody(charId: string, equipped: Record<string, string>) {
   if (wearingWings && alt) {
     return () => (
       <image
-        href={`/characters/${alt}`}
+        href={characterPublicSrc(alt)}
         x={0}
         y={6}
         width={120}

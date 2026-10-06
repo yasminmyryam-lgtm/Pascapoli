@@ -1,8 +1,12 @@
 import type { BodyFn, CharacterAnchors } from './kit'
 import { makeAnchors } from './kit'
 
-/** Public PNGs in `/public/characters`. Square 512×512 assets stay 1:1 in the pad. */
-const PORTRAIT_DIR = '/characters'
+/** Public PNGs in `public/characters`. Uses the Vite base so CrazyGames subpaths resolve. */
+export function characterPublicSrc(file: string): string {
+  const base = import.meta.env.BASE_URL || './'
+  const prefix = base.endsWith('/') ? base : `${base}/`
+  return `${prefix}characters/${file.replace(/^\//, '')}`
+}
 
 const PORTRAIT_FILES: Record<string, string> = {
   'olive-ocarina': 'olive-ocarina.png',
@@ -19,7 +23,7 @@ const PORTRAIT_FILES: Record<string, string> = {
 function portrait(file: string): BodyFn {
   return () => (
     <image
-      href={`${PORTRAIT_DIR}/${file}`}
+      href={characterPublicSrc(file)}
       x={0}
       y={6}
       width={120}
@@ -33,10 +37,10 @@ export const PORTRAIT_BODIES: Record<string, BodyFn> = Object.fromEntries(
   Object.entries(PORTRAIT_FILES).map(([id, file]) => [id, portrait(file)]),
 )
 
-/** Root-relative PNG used by the home screen and the match, when this character has one. */
+/** Portrait PNG for the home screen, the match, and score cards, when this character has one. */
 export function characterPortraitPath(charId: string): string | null {
   const file = PORTRAIT_FILES[charId]
-  return file ? `${PORTRAIT_DIR}/${file}` : null
+  return file ? characterPublicSrc(file) : null
 }
 
 export const PORTRAIT_ANCHORS: Record<string, CharacterAnchors> = {

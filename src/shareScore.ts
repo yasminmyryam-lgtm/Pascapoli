@@ -7,7 +7,7 @@
 
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
-import { characterPortraitPath } from "./art/portraits"
+import { characterPortraitPath, characterPublicSrc } from "./art/portraits"
 import { characterById } from "./characters"
 import { CharacterComposite, cosmeticById, measureFitScale } from "./cosmetics"
 
@@ -350,9 +350,9 @@ function directSpriteUrl(charId: string, equipped: Record<string, string>): stri
     return item?.slot === "wings" && item.anchor === "back"
   })
   const alt = characterById(charId).altBaseSprite
-  const path = wearingWings && alt ? `/characters/${alt}` : characterPortraitPath(charId)
+  const path = wearingWings && alt ? characterPublicSrc(alt) : characterPortraitPath(charId)
   if (!path || typeof window === "undefined") return null
-  return new URL(path, window.location.origin).href
+  return new URL(path, window.location.href).href
 }
 
 async function characterSpriteUrl(charId: string, equipped: Record<string, string>): Promise<string | null> {
