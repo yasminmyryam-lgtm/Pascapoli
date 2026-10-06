@@ -5,7 +5,7 @@ import { copyScoreMessage, preloadScoreCard, prepareScoreCard, presentScoreCard,
 import { OBSTACLES } from './obstacles'
 import { useActions, useGameState, type ChestDrop, type GameReward } from './store'
 import { sfx } from './sfx'
-import type { CoopConfig } from './coopConfig'
+import { decodeCoopPacket, type CoopConfig } from './coopConfig'
 import { markGameplayStart, markGameplayStop, showMidgameAd, showRewardedAd } from './ads/adService'
 import { authorizeDouble, chargeReviveDiamonds, isAdRevive } from './economy/economyApi'
 import ReviveOffer from './economy/ReviveOffer'
@@ -380,8 +380,9 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
   // --- NETWORK RECEIVER ---
   useEffect(() => {
     if (!connection) return
-    const onData = (packet: any) => {
-      if (!packet || typeof packet !== 'object') return
+    const onData = (raw: unknown) => {
+      const packet = decodeCoopPacket(raw)
+      if (!packet?.opCode) return
       switch (packet.opCode) {
         case 'FLAP':
           // Host authoritative: guest's flap moves P2 on the host sim.
@@ -411,9 +412,19 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
           break
       }
     }
+    const onClose = () => {
+      if (!isCoop || settledRef.current) return
+      setOfferRevive(false)
+      const f = finalRef.current
+      settleRun(f.score || internalScore.current, f.collected || Math.floor(internalCoins.current), f.chests || internalChests.current)
+    }
     connection.on('data', onData)
-    return () => { try { connection.off('data', onData) } catch {} }
-  }, [connection, isHost, guest, beginDeathSequence, settleRun, rerender])
+    connection.on('close', onClose)
+    return () => {
+      try { connection.off('data', onData) } catch {}
+      try { connection.off('close', onClose) } catch {}
+    }
+  }, [connection, isHost, guest, isCoop, beginDeathSequence, settleRun, rerender])
 
   const send = useCallback((msg: any) => {
     try { if (connection && connection.open) connection.send(msg) } catch {}

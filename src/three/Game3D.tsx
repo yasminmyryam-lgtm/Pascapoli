@@ -1,7 +1,7 @@
 import { Canvas } from '@react-three/fiber'
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type PointerEvent } from 'react'
 import * as THREE from 'three'
-import type { CoopConfig } from '../coopConfig'
+import { decodeCoopPacket, type CoopConfig } from '../coopConfig'
 import { CHARACTERS } from '../characters'
 import { OBSTACLES } from '../obstacles'
 import { sfx } from '../sfx'
@@ -201,9 +201,9 @@ export default function Game3D({
 
   useEffect(() => {
     if (!connection) return
-    const onData = (packet: unknown) => {
-      if (!packet || typeof packet !== 'object') return
-      const msg = packet as { opCode?: string; snap?: Snap3; payload?: { score: number; collected: number; chests: number } }
+    const onData = (raw: unknown) => {
+      const msg = decodeCoopPacket(raw) as { opCode?: string; snap?: Snap3; payload?: { score: number; collected: number; chests: number } } | null
+      if (!msg?.opCode) return
       if (msg.opCode === '3D_FLAP' && isHost) {
         flap3(worldRef.current, 2)
         setWaiting(false)
@@ -235,11 +235,20 @@ export default function Game3D({
         settle()
       }
     }
+    const onClose = () => {
+      if (!isCoop || settledRef.current) return
+      setOfferRevive(false)
+      worldRef.current.over = true
+      activeRef.current = false
+      settle()
+    }
     connection.on('data', onData)
+    connection.on('close', onClose)
     return () => {
       try { connection.off('data', onData) } catch {}
+      try { connection.off('close', onClose) } catch {}
     }
-  }, [connection, isHost, guest, settle])
+  }, [connection, isHost, guest, isCoop, settle])
 
   useEffect(() => {
     if (!isCoop || !isHost || !connection) return

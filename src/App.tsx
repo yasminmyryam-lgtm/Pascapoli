@@ -12,7 +12,7 @@ import Customize from './Customize'
 import ErrorBoundary from './ErrorBoundary'
 import { levelInfo, useActions, useGameState, spinRemaining, setActiveSession, getDiamonds } from './store'
 import { isMuted, toggleMuted } from './sfx'
-import { guestApplyLaunch, guestApplyServerAck, type CoopConfig } from './coopConfig'
+import { decodeCoopPacket, guestApplyLaunch, guestApplyServerAck, normalizeRoomCode, type CoopConfig } from './coopConfig'
 import { useSession } from './auth/useSession'
 import { logout as signOut } from './auth/authService'
 import { toAuthError } from './auth/errors'
@@ -44,18 +44,54 @@ function readViewMode(): ViewMode {
   }
 }
 
-// WebRTC ICE config — STUN alone fails behind symmetric/mobile NATs, so we add a
-// public TURN relay. This is what makes co-op connect across two different devices.
+/** Phones, Android tablets, iPads, and iPadOS desktop-mode. A mouse-driven laptop stays false. */
+function isHandheldDevice(): boolean {
+  if (typeof navigator === 'undefined' || typeof window === 'undefined') return false
+  const ua = navigator.userAgent || ''
+  if (/iPhone|iPad|iPod|Android/i.test(ua)) return true
+  if (navigator.maxTouchPoints > 1 && /Macintosh/i.test(ua)) return true
+  return window.matchMedia('(pointer: coarse)').matches
+}
+
+const CONNECT_TIMEOUT_MS = 12000
+
+// Public Google STUN only. Extra TURN relays were stalling the handshake.
 const PEER_OPTS = {
   config: {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:global.stun.twilio.com:3478' },
-      { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-      { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-      { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'stun:stun1.l.google.com:19302' },
     ],
   },
+}
+
+function roomPeerId(code: string): string {
+  return `pastapoli-server-${normalizeRoomCode(code)}`
+}
+
+function peerErrorMessage(err: { type?: string }, role: 'HOST' | 'GUEST'): string {
+  switch (err?.type) {
+    case 'peer-unavailable':
+      return 'No room with that code. Check it and try again.'
+    case 'unavailable-id':
+      return 'That room is already open. Close and create a new one.'
+    case 'invalid-id':
+      return 'That room code is not valid.'
+    case 'network':
+    case 'server-error':
+    case 'socket-error':
+    case 'socket-closed':
+    case 'disconnected':
+      return 'Could not reach the multiplayer server. Check your connection and try again.'
+    case 'webrtc':
+      return 'The two devices could not open a connection. Try again.'
+    case 'browser-incompatible':
+      return 'This browser cannot start a multiplayer room.'
+    default:
+      return role === 'HOST'
+        ? 'Could not create the room. Close and try again.'
+        : 'Connection failed. Check the code and try again.'
+  }
 }
 
 const RARITY_PALETTE: Record<Rarity, { hex: string; name: string }> = {
@@ -168,6 +204,15 @@ export default function App() {
   const [networkCode, setNetworkCode] = useState('')
   const [networkInput, setNetworkInput] = useState('')
   const [networkStatus, setNetworkStatus] = useState<'IDLE' | 'CONNECTING' | 'CONNECTED' | 'ERROR'>('IDLE')
+  const [networkMessage, setNetworkMessage] = useState('')
+  const [sameDeviceCoop, setSameDeviceCoop] = useState(() => !isHandheldDevice())
+  useEffect(() => {
+    const mq = window.matchMedia('(pointer: coarse)')
+    const apply = () => setSameDeviceCoop(!isHandheldDevice())
+    apply()
+    mq.addEventListener('change', apply)
+    return () => mq.removeEventListener('change', apply)
+  }, [])
   const [coopConfig, setCoopConfig] = useState<CoopConfig>({ roomId: '', isHost: true, p1Char: selected, p2Char: selected, frontPlayer: 'P1', gameSeed: 0, hostBg: obstacle })
   
   const [showChallengePopup, setShowChallengePopup] = useState(false)
@@ -269,56 +314,140 @@ export default function App() {
     window.history.replaceState({}, document.title, '/')
   }, [pendingRelay, sessionStatus, userId, canEnterApp, isRecoveringPassword, showNetworkLobby, activeEngineMode, networkRole])
 
+  const destroyPeer = () => {
+    try { dataConnection.current?.close() } catch {}
+    try { peerInstance.current?.destroy() } catch {}
+    dataConnection.current = null
+    peerInstance.current = null
+    setLiveConnection(null)
+  }
+
+  const failNetwork = (message: string) => {
+    console.error('Co-op:', message)
+    setNetworkMessage(message)
+    setNetworkStatus('ERROR')
+  }
+
+  const watchConnection = (conn: any, role: 'HOST' | 'GUEST') => {
+    conn.on('error', (err: { type?: string }) => {
+      console.error(`${role} conn error:`, err)
+      failNetwork(peerErrorMessage(err, role))
+    })
+    conn.on('close', () => {
+      if (dataConnection.current !== conn) return
+      dataConnection.current = null
+      setLiveConnection(null)
+      failNetwork('The other player left the room.')
+    })
+    conn.on('iceStateChanged', (state: string) => {
+      if (state === 'failed') failNetwork('The two devices could not connect. Try again.')
+    })
+  }
+
   // --- REȚEA PEERJS ---
   const initializeHostServer = () => {
+    destroyPeer()
+    setNetworkMessage('')
     setNetworkStatus('CONNECTING')
-    const generatedRoomId = Math.floor(1000 + Math.random() * 9000).toString()
-    setNetworkCode(generatedRoomId); setNetworkRole('HOST')
-    
-    const peer = new Peer(`pastapoli-server-${generatedRoomId}`, PEER_OPTS)
-    peer.on('open', () => setNetworkStatus('IDLE'))
-    peer.on('error', (err: any) => { console.error('Host peer error:', err); setNetworkStatus('ERROR') })
+    const generatedRoomId = normalizeRoomCode(String(Math.floor(1000 + Math.random() * 9000)))
+    setNetworkCode(generatedRoomId)
+    setNetworkRole('HOST')
+
+    const peer = new Peer(roomPeerId(generatedRoomId), PEER_OPTS)
+    let opened = false
+    const timer = window.setTimeout(() => {
+      if (opened) return
+      failNetwork('The room took too long to open. Close and try again.')
+      try { peer.destroy() } catch {}
+    }, CONNECT_TIMEOUT_MS)
+    peer.on('open', () => {
+      opened = true
+      window.clearTimeout(timer)
+      setNetworkMessage('')
+      setNetworkStatus('IDLE')
+    })
+    peer.on('error', (err: { type?: string }) => {
+      window.clearTimeout(timer)
+      console.error('Host peer error:', err)
+      failNetwork(peerErrorMessage(err, 'HOST'))
+    })
+    peer.on('disconnected', () => {
+      try { peer.reconnect() } catch { failNetwork('Lost the multiplayer server. Close and try again.') }
+    })
     peer.on('connection', (conn: any) => {
       attachConnection(conn)
+      watchConnection(conn, 'HOST')
       conn.on('open', () => { setCoopConfig(prev => ({ ...prev, isHost: true, p1Char: selected })) })
-      conn.on('error', (err: any) => { console.error('Host conn error:', err); setNetworkStatus('ERROR') })
-      conn.on('data', (packet: any) => {
-        if (packet.opCode === 'CLIENT_HANDSHAKE') {
-          setCoopConfig(prev => ({ ...prev, p2Char: packet.payload.charId }))
+      conn.on('data', (packet: unknown) => {
+        const msg = decodeCoopPacket(packet)
+        if (!msg) return
+        if (msg.opCode === 'CLIENT_HANDSHAKE') {
+          setCoopConfig(prev => ({ ...prev, isHost: true, p2Char: msg.payload?.charId || prev.p2Char }))
+          setNetworkMessage('')
           setNetworkStatus('CONNECTED')
-          conn.send({ opCode: 'SERVER_ACK', payload: { charId: selected } })
+          try { conn.send({ opCode: 'SERVER_ACK', payload: { charId: selected } }) } catch (err) { console.error('Host ack failed:', err) }
         }
-        if (packet.opCode === 'REPLAY_REQ') setGameSessionId(Date.now())
+        if (msg.opCode === 'REPLAY_REQ') setGameSessionId(Date.now())
       })
     })
     peerInstance.current = peer
   }
 
   const connectToHostServer = () => {
-    if(networkInput.length !== 4) return
+    const code = normalizeRoomCode(networkInput)
+    setNetworkInput(code)
+    if (code.length !== 4) {
+      failNetwork('Enter the 4-character room code.')
+      return
+    }
+    destroyPeer()
+    setNetworkMessage('')
     setNetworkStatus('CONNECTING')
     const peer = new Peer(PEER_OPTS)
-    peer.on('error', (err: any) => { console.error('Guest peer error:', err); setNetworkStatus('ERROR') })
+    let opened = false
+    const timer = window.setTimeout(() => {
+      if (opened) return
+      failNetwork('Could not find that room. Check the code and try again.')
+      try { peer.destroy() } catch {}
+    }, CONNECT_TIMEOUT_MS)
+    peer.on('error', (err: { type?: string }) => {
+      window.clearTimeout(timer)
+      console.error('Guest peer error:', err)
+      failNetwork(peerErrorMessage(err, 'GUEST'))
+    })
+    peer.on('disconnected', () => {
+      try { peer.reconnect() } catch { failNetwork('Lost the multiplayer server. Close and try again.') }
+    })
     peer.on('open', () => {
-      const conn = peer.connect(`pastapoli-server-${networkInput}`, { reliable: true })
+      opened = true
+      window.clearTimeout(timer)
+      const conn = peer.connect(roomPeerId(code), { reliable: true, serialization: 'json' })
+      const connTimer = window.setTimeout(() => {
+        if (conn.open) return
+        failNetwork('The host did not answer. Check the code and try again.')
+      }, CONNECT_TIMEOUT_MS)
+      watchConnection(conn, 'GUEST')
       conn.on('open', () => {
+        window.clearTimeout(connTimer)
         attachConnection(conn)
-        conn.send({ opCode: 'CLIENT_HANDSHAKE', payload: { charId: selected } })
-        setCoopConfig(prev => ({ ...prev, isHost: false, roomId: networkInput, p2Char: selected }))
+        try { conn.send({ opCode: 'CLIENT_HANDSHAKE', payload: { charId: selected } }) } catch (err) { console.error('Guest handshake failed:', err) }
+        setCoopConfig(prev => ({ ...prev, isHost: false, roomId: code, p2Char: selected }))
       })
-      conn.on('error', (err: any) => { console.error('Guest conn error:', err); setNetworkStatus('ERROR') })
-      conn.on('data', (packet: any) => {
-        if (packet.opCode === 'SERVER_ACK') {
-          setCoopConfig(prev => guestApplyServerAck(prev, packet.payload.charId, selected, networkInput))
+      conn.on('data', (packet: unknown) => {
+        const msg = decodeCoopPacket(packet)
+        if (!msg) return
+        if (msg.opCode === 'SERVER_ACK') {
+          setCoopConfig(prev => guestApplyServerAck(prev, msg.payload?.charId, selected, code))
+          setNetworkMessage('')
           setNetworkStatus('CONNECTED')
         }
-        if (packet.opCode === 'GAME_LAUNCH_SEQUENCE') {
-          // Host privilege: adopt the host's background for this match, even if unowned.
-          // Do not copy host character into P2 — guest keeps their own selected character.
-          setCoopConfig(prev => guestApplyLaunch(prev, packet.payload))
-          setShowNetworkLobby(false); handleGameLaunch('COOP')
+        if (msg.opCode === 'GAME_LAUNCH_SEQUENCE' && msg.payload) {
+          window.clearTimeout(connTimer)
+          setCoopConfig(prev => guestApplyLaunch(prev, msg.payload))
+          setShowNetworkLobby(false)
+          handleGameLaunch('COOP')
         }
-        if (packet.opCode === 'REPLAY_REQ') setGameSessionId(Date.now())
+        if (msg.opCode === 'REPLAY_REQ') setGameSessionId(Date.now())
       })
     })
     peerInstance.current = peer
@@ -333,9 +462,21 @@ export default function App() {
   }
 
   const terminateNetworkSession = () => {
-    if (dataConnection.current) dataConnection.current.close()
-    if (peerInstance.current) peerInstance.current.destroy()
-    dataConnection.current = null; peerInstance.current = null; setLiveConnection(null); setNetworkRole(null); setNetworkStatus('IDLE')
+    destroyPeer()
+    setNetworkRole(null)
+    setNetworkStatus('IDLE')
+    setNetworkMessage('')
+  }
+
+  const chooseView = (next: ViewMode) => {
+    setViewMode(next)
+    if (next !== '3D') return
+    const inCoop = showNetworkLobby || activeEngineMode === 'COOP' || networkRole !== null
+    if (!inCoop) return
+    setShowNetworkLobby(false)
+    setActiveEngineMode('NORMAL')
+    setIsGameEngineMounted(false)
+    terminateNetworkSession()
   }
 
   const activeChar = CHARACTERS.find((c) => c.id === selected) ?? CHARACTERS[0]
@@ -442,7 +583,7 @@ export default function App() {
                   <button
                     key={v}
                     type="button"
-                    onClick={() => setViewMode(v)}
+                    onClick={() => chooseView(v)}
                     aria-pressed={viewMode === v}
                     className={`rounded-xl px-6 py-2 text-sm font-black uppercase transition-colors ${viewMode === v ? 'bg-[#ffd24d] text-[#170d24]' : 'text-white/60 hover:text-white'}`}
                   >
@@ -456,7 +597,9 @@ export default function App() {
               <button onClick={() => handleGameLaunch('NORMAL')} className="bg-[#6ee7a8] text-[#170d24] py-4 rounded-2xl font-black uppercase">▶ {t('button.play')}</button>
               <button onClick={() => setCustomizeId(activeChar.id)} className="bg-[#412e61] text-white py-4 rounded-2xl font-black uppercase">👕 {t('button.shop')}</button>
               <button onClick={() => setShowChallengePopup(true)} className="bg-[#ff7ad9] text-[#170d24] py-4 rounded-2xl font-black uppercase">🔥 {t('button.hard')}</button>
-              <button onClick={() => { relayHandled.current = true; clearPendingRelay(); setPendingRelay(null); setActiveRelay(null); setNetworkRole(null); setCoopConfig(prev => ({ ...prev, isHost: true, p1Char: selected, p2Char: selected })); setShowNetworkLobby(true); }} className="bg-[#8ec5ff] text-[#170d24] py-4 rounded-2xl font-black uppercase">🤝 {t('button.coop')}</button>
+              {viewMode !== '3D' && (
+                <button onClick={() => { relayHandled.current = true; clearPendingRelay(); setPendingRelay(null); setActiveRelay(null); setNetworkRole(null); setCoopConfig(prev => ({ ...prev, isHost: true, p1Char: selected, p2Char: selected })); setShowNetworkLobby(true); }} className="bg-[#8ec5ff] text-[#170d24] py-4 rounded-2xl font-black uppercase">🤝 {t('button.coop')}</button>
+              )}
             </div>
           </div>
         </div>
@@ -558,45 +701,71 @@ export default function App() {
         </HScroll>
       </section>
 
+      {(showNetworkLobby || (isGameEngineMounted && activeEngineMode === 'COOP')) && (
+        <div className="fixed left-4 z-[1200] inline-flex rounded-2xl bg-[#170d24] p-1 shadow-lg" style={{ top: 'max(1rem, env(safe-area-inset-top))' }} role="group" aria-label="Game perspective">
+          {(['2D', '3D'] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => chooseView(v)}
+              aria-pressed={viewMode === v}
+              className={`rounded-xl px-4 py-2 text-sm font-black uppercase ${viewMode === v ? 'bg-[#ffd24d] text-[#170d24]' : 'text-white/70'}`}
+            >
+              {t(v === '2D' ? 'view.2d' : 'view.3d')}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* LOBBY P2P */}
-      {showNetworkLobby && (
+      {showNetworkLobby && viewMode !== '3D' && (
         <div className="fixed inset-0 z-[800] flex items-center justify-center bg-black/90 p-4">
           <button onClick={() => {setShowNetworkLobby(false); terminateNetworkSession()}} className="absolute top-8 right-8 w-14 h-14 bg-white/10 rounded-full text-white text-2xl z-50">✕</button>
           <div className="bg-[#1f1333] p-8 rounded-[48px] w-full max-w-lg shadow-2xl text-center">
             <h2 className="text-4xl font-black text-white mb-8">Multiplayer P2P</h2>
             {!networkRole && (
               <div className="flex flex-col gap-4">
-                <button onClick={() => executeCoopLaunch('P1')} className="bg-[#ffd24d] py-6 rounded-3xl font-black text-xl text-[#123]">Play together on this device</button>
-                <p className="text-sm font-bold text-white/60">Left side or Space = Player 1. Right side, W, or ↑ = Player 2.</p>
+                {sameDeviceCoop && (
+                  <>
+                    <button onClick={() => executeCoopLaunch('P1')} className="bg-[#ffd24d] py-6 rounded-3xl font-black text-xl text-[#123]">Play together on this device</button>
+                    <p className="text-sm font-bold text-white/60">Left side or Space = Player 1. Right side, W, or ↑ = Player 2.</p>
+                  </>
+                )}
                 <button onClick={initializeHostServer} className="bg-[#8ec5ff] py-6 rounded-3xl font-black text-xl text-[#123]">Create Room (Host)</button>
-                <button onClick={() => { setNetworkRole('GUEST'); setCoopConfig(prev => ({ ...prev, isHost: false, p2Char: selected })); }} className="bg-[#6ee7a8] py-6 rounded-3xl font-black text-xl text-[#123]">Join with Code (Guest)</button>
+                <button onClick={() => { setNetworkMessage(''); setNetworkStatus('IDLE'); setNetworkRole('GUEST'); setCoopConfig(prev => ({ ...prev, isHost: false, p2Char: selected })); }} className="bg-[#6ee7a8] py-6 rounded-3xl font-black text-xl text-[#123]">Join with Code (Guest)</button>
               </div>
             )}
             {networkRole === 'HOST' && (
               <div>
                 <p className="text-[#8ec5ff] mb-2 font-bold uppercase">Your Room Code</p>
-                <div className="bg-black/50 py-6 rounded-3xl mb-6"><p className="text-6xl font-black text-[#8ec5ff]">{networkCode}</p></div>
+                <div className="bg-black/50 py-6 rounded-3xl mb-6"><p className="text-6xl font-black text-[#8ec5ff]">{networkCode || '----'}</p></div>
                 {networkStatus === 'CONNECTED' ? (
                   <div className="flex flex-col gap-4 bg-[#8ec5ff]/10 p-6 rounded-3xl">
-                    <button onClick={() => executeCoopLaunch('P1')} className="bg-[#ffd24d] py-4 rounded-xl font-bold text-[#123]">I play in front</button>
-                    <button onClick={() => executeCoopLaunch('P2')} className="bg-white/10 text-white py-4 rounded-xl font-bold">Friend plays in front</button>
+                    <p className="text-[#6ee7a8] font-black uppercase">Ready</p>
+                    <button onClick={() => executeCoopLaunch('P1')} className="bg-[#ffd24d] py-4 rounded-xl font-bold text-[#123]">Start Game — I play in front</button>
+                    <button onClick={() => executeCoopLaunch('P2')} className="bg-white/10 text-white py-4 rounded-xl font-bold">Start Game — friend plays in front</button>
                   </div>
                 ) : networkStatus === 'ERROR' ? (
-                  <p className="text-[#ff7a7a] font-bold">Network error. Close and try again.</p>
+                  <div className="flex flex-col gap-4">
+                    <p className="text-[#ff7a7a] font-bold">{networkMessage || 'Network error. Close and try again.'}</p>
+                    <button onClick={initializeHostServer} className="bg-[#8ec5ff] py-4 rounded-xl font-black text-[#123]">Try again</button>
+                  </div>
+                ) : networkStatus === 'CONNECTING' ? (
+                  <p className="text-white animate-pulse">Opening room...</p>
                 ) : <p className="text-white animate-pulse">Waiting for Player 2...</p>}
               </div>
             )}
             {networkRole === 'GUEST' && (
               <div className="flex flex-col gap-4">
-                <input type="number" value={networkInput} onChange={(e)=>setNetworkInput(e.target.value.slice(0,4))} placeholder="0000" className="text-center text-6xl font-black py-6 rounded-3xl bg-black/40 text-white outline-none" maxLength={4} />
+                <input type="text" inputMode="numeric" autoCapitalize="characters" value={networkInput} onChange={(e) => setNetworkInput(normalizeRoomCode(e.target.value))} placeholder="0000" className="text-center text-6xl font-black py-6 rounded-3xl bg-black/40 text-white outline-none" maxLength={4} />
                 {networkStatus === 'CONNECTED' ? (
-                  <p className="text-[#6ee7a8] font-black animate-pulse">Connected! Waiting for host...</p>
+                  <p className="text-[#6ee7a8] font-black uppercase">Ready. Waiting for the host to start.</p>
                 ) : networkStatus === 'ERROR' ? (
-                  <p className="text-[#ff7a7a] font-bold">Connection failed. Check the code and try again.</p>
+                  <p className="text-[#ff7a7a] font-bold">{networkMessage || 'Connection failed. Check the code and try again.'}</p>
                 ) : networkStatus === 'CONNECTING' ? (
                   <p className="text-white/70 font-bold animate-pulse">Connecting...</p>
                 ) : null}
-                <button onClick={connectToHostServer} disabled={networkInput.length !== 4 || networkStatus === 'CONNECTING'} className="mt-2 bg-[#6ee7a8] py-6 rounded-3xl font-black text-xl text-[#123] disabled:opacity-40">Connect</button>
+                <button onClick={connectToHostServer} disabled={normalizeRoomCode(networkInput).length !== 4 || networkStatus === 'CONNECTING' || networkStatus === 'CONNECTED'} className="mt-2 bg-[#6ee7a8] py-6 rounded-3xl font-black text-xl text-[#123] disabled:opacity-40">Connect</button>
               </div>
             )}
           </div>
@@ -620,7 +789,7 @@ export default function App() {
       {isGameEngineMounted && (
         <div className="fixed inset-0 z-[1000] bg-black">
            <ErrorBoundary onClose={() => { setIsGameEngineMounted(false); terminateNetworkSession(); }}>
-             {viewMode === '3D' && !activeRelay ? (
+             {viewMode === '3D' && activeEngineMode !== 'COOP' && !activeRelay ? (
                <Suspense fallback={<div className="fixed inset-0 grid place-items-center bg-black"><p className="text-2xl font-black text-white animate-pulse">Loading 3D…</p></div>}>
                  <Game3D
                    key={gameSessionId}

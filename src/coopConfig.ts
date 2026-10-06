@@ -24,6 +24,21 @@ export function guestApplyServerAck(
   }
 }
 
+/** Room codes ignore spaces and letter case. */
+export function normalizeRoomCode(raw: string): string {
+  return raw.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4)
+}
+
+/** PeerJS may deliver a packet as an object or as a JSON string. */
+export function decodeCoopPacket(raw: unknown): { opCode?: string; payload?: any; snap?: any } | null {
+  let packet = raw
+  if (typeof packet === 'string') {
+    try { packet = JSON.parse(packet) } catch { return null }
+  }
+  if (!packet || typeof packet !== 'object') return null
+  return packet as { opCode?: string; payload?: any; snap?: any }
+}
+
 /** Guest inherits match setup from the host — background, seed, lane — not the guest character. */
 export function guestApplyLaunch(
   prev: CoopConfig,
