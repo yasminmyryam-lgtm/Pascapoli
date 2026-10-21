@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react'
-import Peer from 'peerjs'
 import Auth from './Auth'
 import { CHARACTERS, type Rarity } from './characters'
 import { CharacterView } from './cosmetics'
@@ -13,6 +12,7 @@ import ErrorBoundary from './ErrorBoundary'
 import { levelInfo, useActions, useGameState, spinRemaining, setActiveSession, getDiamonds } from './store'
 import { isMuted, toggleMuted } from './sfx'
 import { decodeCoopPacket, guestApplyLaunch, guestApplyServerAck, normalizeRoomCode, type CoopConfig } from './coopConfig'
+import { createCoopRoom, type CoopLink } from './coopSocket'
 import { useSession } from './auth/useSession'
 import { logout as signOut } from './auth/authService'
 import { toAuthError } from './auth/errors'
@@ -54,45 +54,6 @@ function isHandheldDevice(): boolean {
 }
 
 const CONNECT_TIMEOUT_MS = 12000
-
-// Public Google STUN only. Extra TURN relays were stalling the handshake.
-const PEER_OPTS = {
-  config: {
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-    ],
-  },
-}
-
-function roomPeerId(code: string): string {
-  return `pastapoli-server-${normalizeRoomCode(code)}`
-}
-
-function peerErrorMessage(err: { type?: string }, role: 'HOST' | 'GUEST'): string {
-  switch (err?.type) {
-    case 'peer-unavailable':
-      return 'No room with that code. Check it and try again.'
-    case 'unavailable-id':
-      return 'That room is already open. Close and create a new one.'
-    case 'invalid-id':
-      return 'That room code is not valid.'
-    case 'network':
-    case 'server-error':
-    case 'socket-error':
-    case 'socket-closed':
-    case 'disconnected':
-      return 'Could not reach the multiplayer server. Check your connection and try again.'
-    case 'webrtc':
-      return 'The two devices could not open a connection. Try again.'
-    case 'browser-incompatible':
-      return 'This browser cannot start a multiplayer room.'
-    default:
-      return role === 'HOST'
-        ? 'Could not create the room. Close and try again.'
-        : 'Connection failed. Check the code and try again.'
-  }
-}
 
 const RARITY_PALETTE: Record<Rarity, { hex: string; name: string }> = {
   FREE: { hex: '#6ee7a8', name: 'Free' }, COMMON: { hex: '#8ec5ff', name: 'Common' }, RARE: { hex: '#b98bff', name: 'Rare' }, EPIC: { hex: '#ff7ad9', name: 'Epic' }, LEGENDARY: { hex: '#ffd24d', name: 'Legendary' }, MYTHIC: { hex: '#ff5fa8', name: 'Mythic' }
@@ -265,13 +226,13 @@ export default function App() {
     }
   }
 
-  const peerInstance = useRef<any>(null)
-  const dataConnection = useRef<any>(null)
+  const peerInstance = useRef<{ destroy: () => void } | null>(null)
+  const dataConnection = useRef<CoopLink | null>(null)
   const [liveConnection, setLiveConnection] = useState<any>(null)
 
   const wheelReady = spinRemaining(lastSpin) <= 0
 
-  const attachConnection = (conn: any) => {
+  const attachConnection = (conn: CoopLink) => {
     dataConnection.current = conn
     setLiveConnection(conn)
   }
@@ -328,23 +289,16 @@ export default function App() {
     setNetworkStatus('ERROR')
   }
 
-  const watchConnection = (conn: any, role: 'HOST' | 'GUEST') => {
-    conn.on('error', (err: { type?: string }) => {
-      console.error(`${role} conn error:`, err)
-      failNetwork(peerErrorMessage(err, role))
-    })
+  const watchConnection = (conn: CoopLink) => {
     conn.on('close', () => {
       if (dataConnection.current !== conn) return
       dataConnection.current = null
       setLiveConnection(null)
       failNetwork('The other player left the room.')
     })
-    conn.on('iceStateChanged', (state: string) => {
-      if (state === 'failed') failNetwork('The two devices could not connect. Try again.')
-    })
   }
 
-  // --- REȚEA PEERJS ---
+  // Rooms are Supabase Realtime channels named after the 4-character code.
   const initializeHostServer = () => {
     destroyPeer()
     setNetworkMessage('')
@@ -353,47 +307,50 @@ export default function App() {
     setNetworkCode(generatedRoomId)
     setNetworkRole('HOST')
 
-    const peer = new Peer(roomPeerId(generatedRoomId), PEER_OPTS)
+    const room = createCoopRoom(generatedRoomId, 'HOST')
     let opened = false
     const timer = window.setTimeout(() => {
       if (opened) return
       failNetwork('The room took too long to open. Close and try again.')
-      try { peer.destroy() } catch {}
+      room.destroy()
     }, CONNECT_TIMEOUT_MS)
-    peer.on('open', () => {
-      opened = true
-      window.clearTimeout(timer)
-      console.info('Co-op host: room open', generatedRoomId)
-      setNetworkMessage('')
-      setNetworkStatus('IDLE')
-    })
-    peer.on('error', (err: { type?: string }) => {
-      window.clearTimeout(timer)
-      console.error('Host peer error:', err)
-      failNetwork(peerErrorMessage(err, 'HOST'))
-    })
-    peer.on('disconnected', () => {
-      try { peer.reconnect() } catch { failNetwork('Lost the multiplayer server. Close and try again.') }
-    })
-    peer.on('connection', (conn: any) => {
+    const conn = room.link
+    let linked = false
+    watchConnection(conn)
+    conn.on('open', () => {
       console.info('Co-op host: guest is connecting')
       attachConnection(conn)
-      watchConnection(conn, 'HOST')
-      conn.on('open', () => { setCoopConfig(prev => ({ ...prev, isHost: true, p1Char: selected })) })
-      conn.on('data', (packet: unknown) => {
-        const msg = decodeCoopPacket(packet)
-        if (!msg) return
-        if (msg.opCode === 'CLIENT_HANDSHAKE') {
-          console.info('Co-op host: handshake received, acknowledging')
-          setCoopConfig(prev => ({ ...prev, isHost: true, p2Char: msg.payload?.charId || prev.p2Char }))
-          setNetworkMessage('')
-          setNetworkStatus('CONNECTED')
-          try { conn.send({ opCode: 'SERVER_ACK', payload: { charId: selected } }) } catch (err) { console.error('Host ack failed:', err) }
-        }
-        if (msg.opCode === 'REPLAY_REQ') setGameSessionId(Date.now())
-      })
+      setCoopConfig(prev => ({ ...prev, isHost: true, p1Char: selected }))
     })
-    peerInstance.current = peer
+    conn.on('data', (packet: unknown) => {
+      const msg = decodeCoopPacket(packet)
+      if (!msg) return
+      if (msg.opCode === 'CLIENT_HANDSHAKE') {
+        linked = true
+        console.info('Co-op host: handshake received, acknowledging')
+        setCoopConfig(prev => ({ ...prev, isHost: true, p2Char: msg.payload?.charId || prev.p2Char }))
+        setNetworkMessage('')
+        setNetworkStatus('CONNECTED')
+        try { conn.send({ opCode: 'SERVER_ACK', payload: { charId: selected } }) } catch (err) { console.error('Host ack failed:', err) }
+      }
+      if (msg.opCode === 'REPLAY_REQ') setGameSessionId(Date.now())
+    })
+    room.start({
+      onReady: () => {
+        opened = true
+        window.clearTimeout(timer)
+        console.info('Co-op host: room open', generatedRoomId)
+        if (linked) return
+        setNetworkMessage('')
+        setNetworkStatus('IDLE')
+      },
+      onFail: (message) => {
+        window.clearTimeout(timer)
+        room.destroy()
+        failNetwork(message)
+      },
+    })
+    peerInstance.current = room
   }
 
   const connectToHostServer = () => {
@@ -406,72 +363,77 @@ export default function App() {
     destroyPeer()
     setNetworkMessage('')
     setNetworkStatus('CONNECTING')
-    const peer = new Peer(PEER_OPTS)
+    const room = createCoopRoom(code, 'GUEST')
     let opened = false
     const timer = window.setTimeout(() => {
       if (opened) return
-      failNetwork('Could not find that room. Check the code and try again.')
-      try { peer.destroy() } catch {}
+      failNetwork('Could not reach the multiplayer server. Check your connection and try again.')
+      room.destroy()
     }, CONNECT_TIMEOUT_MS)
-    peer.on('error', (err: { type?: string }) => {
-      window.clearTimeout(timer)
-      console.error('Guest peer error:', err)
-      failNetwork(peerErrorMessage(err, 'GUEST'))
-    })
-    peer.on('disconnected', () => {
-      try { peer.reconnect() } catch { failNetwork('Lost the multiplayer server. Close and try again.') }
-    })
-    peer.on('open', () => {
-      opened = true
-      window.clearTimeout(timer)
-      console.info('Co-op guest: broker connected, dialing room', code)
-      const conn = peer.connect(roomPeerId(code), { reliable: true, serialization: 'json' })
-      const connTimer = window.setTimeout(() => {
-        if (conn.open) return
-        console.error('Co-op guest: host never opened the data channel for room', code)
-        failNetwork('The host did not answer. Check the code and try again.')
+    const conn = room.link
+    // Started once the socket is up, so a slow subscribe does not eat the
+    // time the guest waits for the host's room.
+    let connTimer: number | undefined
+    // The channel can open and still never get the host's SERVER_ACK. Without
+    // this timer the lobby would sit on "Connecting..." forever.
+    let acked = false
+    let ackTimer: number | undefined
+    watchConnection(conn)
+    conn.on('open', () => {
+      window.clearTimeout(connTimer)
+      console.info('Co-op guest: room found, sending handshake', code)
+      attachConnection(conn)
+      try { conn.send({ opCode: 'CLIENT_HANDSHAKE', payload: { charId: selected } }) } catch (err) { console.error('Guest handshake failed:', err) }
+      setCoopConfig(prev => ({ ...prev, isHost: false, roomId: code, p2Char: selected }))
+      ackTimer = window.setTimeout(() => {
+        if (acked || peerInstance.current !== room) return
+        console.error('Co-op guest: no SERVER_ACK from host for room', code)
+        destroyPeer()
+        failNetwork('The host did not confirm the connection. Try again.')
       }, CONNECT_TIMEOUT_MS)
-      // The channel can open and still never get the host's SERVER_ACK. Without
-      // this timer the lobby would sit on "Connecting..." forever.
-      let acked = false
-      let ackTimer: number | undefined
-      watchConnection(conn, 'GUEST')
-      conn.on('open', () => {
-        window.clearTimeout(connTimer)
-        console.info('Co-op guest: channel open, sending handshake')
-        attachConnection(conn)
-        try { conn.send({ opCode: 'CLIENT_HANDSHAKE', payload: { charId: selected } }) } catch (err) { console.error('Guest handshake failed:', err) }
-        setCoopConfig(prev => ({ ...prev, isHost: false, roomId: code, p2Char: selected }))
-        ackTimer = window.setTimeout(() => {
-          if (acked || peerInstance.current !== peer) return
-          console.error('Co-op guest: no SERVER_ACK from host for room', code)
-          destroyPeer()
-          failNetwork('The host did not confirm the connection. Try again.')
-        }, CONNECT_TIMEOUT_MS)
-      })
-      conn.on('data', (packet: unknown) => {
-        const msg = decodeCoopPacket(packet)
-        if (!msg) return
-        if (msg.opCode === 'SERVER_ACK') {
-          acked = true
-          window.clearTimeout(ackTimer)
-          console.info('Co-op guest: handshake acknowledged by host')
-          setCoopConfig(prev => guestApplyServerAck(prev, msg.payload?.charId, selected, code))
-          setNetworkMessage('')
-          setNetworkStatus('CONNECTED')
-        }
-        if (msg.opCode === 'GAME_LAUNCH_SEQUENCE' && msg.payload) {
-          acked = true
-          window.clearTimeout(ackTimer)
-          window.clearTimeout(connTimer)
-          setCoopConfig(prev => guestApplyLaunch(prev, msg.payload))
-          setShowNetworkLobby(false)
-          handleGameLaunch('COOP')
-        }
-        if (msg.opCode === 'REPLAY_REQ') setGameSessionId(Date.now())
-      })
     })
-    peerInstance.current = peer
+    conn.on('data', (packet: unknown) => {
+      const msg = decodeCoopPacket(packet)
+      if (!msg) return
+      if (msg.opCode === 'SERVER_ACK') {
+        acked = true
+        window.clearTimeout(ackTimer)
+        console.info('Co-op guest: handshake acknowledged by host')
+        setCoopConfig(prev => guestApplyServerAck(prev, msg.payload?.charId, selected, code))
+        setNetworkMessage('')
+        setNetworkStatus('CONNECTED')
+      }
+      if (msg.opCode === 'GAME_LAUNCH_SEQUENCE' && msg.payload) {
+        acked = true
+        window.clearTimeout(ackTimer)
+        window.clearTimeout(connTimer)
+        setCoopConfig(prev => guestApplyLaunch(prev, msg.payload))
+        setShowNetworkLobby(false)
+        handleGameLaunch('COOP')
+      }
+      if (msg.opCode === 'REPLAY_REQ') setGameSessionId(Date.now())
+    })
+    room.start({
+      onReady: () => {
+        opened = true
+        window.clearTimeout(timer)
+        console.info('Co-op guest: joined room channel', code)
+        if (conn.open) return
+        connTimer = window.setTimeout(() => {
+          if (conn.open) return
+          console.error('Co-op guest: host never answered for room', code)
+          failNetwork('The host did not answer. Check the code and try again.')
+          room.destroy()
+        }, CONNECT_TIMEOUT_MS)
+      },
+      onFail: (message) => {
+        window.clearTimeout(timer)
+        window.clearTimeout(connTimer)
+        room.destroy()
+        failNetwork(message)
+      },
+    })
+    peerInstance.current = room
   }
 
   const executeCoopLaunch = (front: 'P1' | 'P2') => {
