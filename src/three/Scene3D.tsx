@@ -271,11 +271,15 @@ export default function Scene3D({
       slot.mesh.quaternion.copy(camera.quaternion)
     })
 
-    // Own body is never drawn. Co-op shows only the teammate, same Z, offset on X.
+    const flashing = world.iframes > 0 && Math.sin(time * 18) < 0
+    // True first-person: the camera IS the player, so the local character is
+    // never drawn. Co-op shows only the teammate, same Z, offset on X.
     scene.mate.visible = coop && !world.over
     if (scene.mate.visible) {
       scene.mate.position.set(otherLane, otherY, CAM_Z)
       scene.mate.quaternion.copy(camera.quaternion)
+      const mateMaterial = scene.mate.material as THREE.MeshBasicMaterial
+      mateMaterial.opacity = flashing ? 0.28 : 1
     }
   })
 

@@ -119,18 +119,18 @@ function HScroll({ children, className = '' }: { children: React.ReactNode; clas
   }
 
   return (
-    <div className="relative w-full min-w-0">
+    <div className="flex w-full min-w-0 max-w-full items-center gap-3">
       <button
         type="button"
         aria-label="Scroll left"
         onClick={() => scrollByDir(-1)}
-        className="hidden lg:flex absolute left-0 top-1/2 z-10 h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-[#170d24]/90 text-2xl font-black text-white shadow-lg backdrop-blur-sm hover:bg-[#2a1c42]"
+        className="relative z-10 hidden h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/15 bg-[#170d24]/90 text-2xl font-black text-white shadow-lg backdrop-blur-sm hover:bg-[#2a1c42] lg:flex"
       >
         ‹
       </button>
       <div
         ref={scrollerRef}
-        className={`flex w-full min-w-0 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${className}`}
+        className={`flex min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${className}`}
         style={{ touchAction: 'pan-x', WebkitOverflowScrolling: 'touch' }}
       >
         {children}
@@ -139,7 +139,7 @@ function HScroll({ children, className = '' }: { children: React.ReactNode; clas
         type="button"
         aria-label="Scroll right"
         onClick={() => scrollByDir(1)}
-        className="hidden lg:flex absolute right-0 top-1/2 z-10 h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-[#170d24]/90 text-2xl font-black text-white shadow-lg backdrop-blur-sm hover:bg-[#2a1c42]"
+        className="relative z-10 hidden h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/15 bg-[#170d24]/90 text-2xl font-black text-white shadow-lg backdrop-blur-sm hover:bg-[#2a1c42] lg:flex"
       >
         ›
       </button>
@@ -363,6 +363,7 @@ export default function App() {
     peer.on('open', () => {
       opened = true
       window.clearTimeout(timer)
+      console.info('Co-op host: room open', generatedRoomId)
       setNetworkMessage('')
       setNetworkStatus('IDLE')
     })
@@ -375,6 +376,7 @@ export default function App() {
       try { peer.reconnect() } catch { failNetwork('Lost the multiplayer server. Close and try again.') }
     })
     peer.on('connection', (conn: any) => {
+      console.info('Co-op host: guest is connecting')
       attachConnection(conn)
       watchConnection(conn, 'HOST')
       conn.on('open', () => { setCoopConfig(prev => ({ ...prev, isHost: true, p1Char: selected })) })
@@ -382,6 +384,7 @@ export default function App() {
         const msg = decodeCoopPacket(packet)
         if (!msg) return
         if (msg.opCode === 'CLIENT_HANDSHAKE') {
+          console.info('Co-op host: handshake received, acknowledging')
           setCoopConfig(prev => ({ ...prev, isHost: true, p2Char: msg.payload?.charId || prev.p2Char }))
           setNetworkMessage('')
           setNetworkStatus('CONNECTED')
@@ -421,27 +424,45 @@ export default function App() {
     peer.on('open', () => {
       opened = true
       window.clearTimeout(timer)
+      console.info('Co-op guest: broker connected, dialing room', code)
       const conn = peer.connect(roomPeerId(code), { reliable: true, serialization: 'json' })
       const connTimer = window.setTimeout(() => {
         if (conn.open) return
+        console.error('Co-op guest: host never opened the data channel for room', code)
         failNetwork('The host did not answer. Check the code and try again.')
       }, CONNECT_TIMEOUT_MS)
+      // The channel can open and still never get the host's SERVER_ACK. Without
+      // this timer the lobby would sit on "Connecting..." forever.
+      let acked = false
+      let ackTimer: number | undefined
       watchConnection(conn, 'GUEST')
       conn.on('open', () => {
         window.clearTimeout(connTimer)
+        console.info('Co-op guest: channel open, sending handshake')
         attachConnection(conn)
         try { conn.send({ opCode: 'CLIENT_HANDSHAKE', payload: { charId: selected } }) } catch (err) { console.error('Guest handshake failed:', err) }
         setCoopConfig(prev => ({ ...prev, isHost: false, roomId: code, p2Char: selected }))
+        ackTimer = window.setTimeout(() => {
+          if (acked || peerInstance.current !== peer) return
+          console.error('Co-op guest: no SERVER_ACK from host for room', code)
+          destroyPeer()
+          failNetwork('The host did not confirm the connection. Try again.')
+        }, CONNECT_TIMEOUT_MS)
       })
       conn.on('data', (packet: unknown) => {
         const msg = decodeCoopPacket(packet)
         if (!msg) return
         if (msg.opCode === 'SERVER_ACK') {
+          acked = true
+          window.clearTimeout(ackTimer)
+          console.info('Co-op guest: handshake acknowledged by host')
           setCoopConfig(prev => guestApplyServerAck(prev, msg.payload?.charId, selected, code))
           setNetworkMessage('')
           setNetworkStatus('CONNECTED')
         }
         if (msg.opCode === 'GAME_LAUNCH_SEQUENCE' && msg.payload) {
+          acked = true
+          window.clearTimeout(ackTimer)
           window.clearTimeout(connTimer)
           setCoopConfig(prev => guestApplyLaunch(prev, msg.payload))
           setShowNetworkLobby(false)
@@ -468,7 +489,13 @@ export default function App() {
     setNetworkMessage('')
   }
 
+  // Co-op is 2D only: while the lobby is open or a co-op match is running, the
+  // 2D/3D switcher is hidden and the view cannot be changed. It comes back as
+  // soon as the lobby closes or the match exits to the main menu.
+  const coopActive = showNetworkLobby || (isGameEngineMounted && activeEngineMode === 'COOP')
+
   const chooseView = (next: ViewMode) => {
+    if (coopActive) return
     setViewMode(next)
     if (next !== '3D') return
     const inCoop = showNetworkLobby || activeEngineMode === 'COOP' || networkRole !== null
@@ -578,6 +605,7 @@ export default function App() {
             <div className="mb-3 flex flex-wrap items-center justify-center gap-3 lg:justify-start">
               <span className="text-white/50 text-xs font-black uppercase tracking-wider">{t('menu.view')}</span>
               <LanguageMenu />
+              {!coopActive && (
               <div className="inline-flex rounded-2xl bg-black/40 p-1" role="group" aria-label="Game perspective">
                 {(['2D', '3D'] as const).map((v) => (
                   <button
@@ -591,6 +619,7 @@ export default function App() {
                   </button>
                 ))}
               </div>
+              )}
               {viewMode === '3D' && <span className="text-white/40 text-[11px] font-bold">First-person · swipe to look</span>}
             </div>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 w-full">
@@ -662,9 +691,9 @@ export default function App() {
         </div>
       </section>
 
-      <section ref={themesSectionRef} className="max-w-7xl mx-auto mt-12 mb-10">
-        <h2 className="text-xl font-black text-white mb-4 px-4">{t('menu.themes')}</h2>
-        <HScroll className="gap-4 pb-6 px-4 lg:px-14">
+      <section ref={themesSectionRef} className="max-w-7xl mx-auto mt-12 mb-10 px-4">
+        <h2 className="text-xl font-black text-white mb-4">{t('menu.themes')}</h2>
+        <HScroll className="gap-4 pb-2">
           {OBSTACLES.map((o) => {
             const on = obstacle === o.id
             const isOwned = (ownedObstacles || []).includes(o.id) || o.id === 'woodo'
@@ -700,22 +729,6 @@ export default function App() {
           })}
         </HScroll>
       </section>
-
-      {(showNetworkLobby || (isGameEngineMounted && activeEngineMode === 'COOP')) && (
-        <div className="fixed left-4 z-[1200] inline-flex rounded-2xl bg-[#170d24] p-1 shadow-lg" style={{ top: 'max(1rem, env(safe-area-inset-top))' }} role="group" aria-label="Game perspective">
-          {(['2D', '3D'] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => chooseView(v)}
-              aria-pressed={viewMode === v}
-              className={`rounded-xl px-4 py-2 text-sm font-black uppercase ${viewMode === v ? 'bg-[#ffd24d] text-[#170d24]' : 'text-white/70'}`}
-            >
-              {t(v === '2D' ? 'view.2d' : 'view.3d')}
-            </button>
-          ))}
-        </div>
-      )}
 
       {/* LOBBY P2P */}
       {showNetworkLobby && viewMode !== '3D' && (

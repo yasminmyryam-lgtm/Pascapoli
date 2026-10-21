@@ -180,17 +180,20 @@ export function flap3(world: World3, who: 1 | 2) {
   else world.v2 = W3.FLAP
 }
 
-/** Resume a downed run: lift into the nearest gap and grant a short i-frame. */
+/** Resume a downed run at mid-height, stopped, with the nearby gates removed. */
 export function revive3(world: World3) {
-  const pipe = world.pipes.find((p) => Math.abs(p.z) < 4) ?? world.pipes[0]
-  const y = pipe ? pipe.gapY : W3.START_Y
+  const y = (W3.FLOOR + W3.CEILING) / 2
   world.over = false
   world.started = true
   world.iframes = 2
   world.y1 = y
-  world.v1 = W3.FLAP
+  world.v1 = 0
   world.y2 = y
-  world.v2 = W3.FLAP
+  world.v2 = 0
+  const blocking = (z: number) => z > -10 && z < 1.6
+  world.pipes = world.pipes.filter((p) => !blocking(p.z))
+  world.coins = world.coins.filter((c) => !blocking(c.z))
+  world.chests = world.chests.filter((k) => !blocking(k.z))
 }
 
 /** True if the player's sphere overlaps a pipe shaft this frame (swept on Z). */

@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react'
-import { COSMETICS } from './cosmetics'
+import React, { useEffect, useRef, useState } from 'react'
+import { AccessoryArt, CharacterView, COSMETICS, COSMETIC_RARITY, TYPE_LABEL, cosmeticById } from './cosmetics'
+import { isAccessoryCompatibleById } from './accessoryCompatibility'
 import { isFounder, useActions, useGameState, spinRemaining } from './store'
 import { sfx } from './sfx'
 import { showRewardedAd } from './ads/adService'
@@ -65,7 +66,7 @@ type Pending = {
 }
 
 export default function LuckyWheel({ onClose }: { onClose: () => void }) {
-  const { lastSpin, cosmetics } = useGameState()
+  const { lastSpin, cosmetics, selected, equipped } = useGameState()
   const { addCoins, addXp, grantCosmetic, setLastSpin } = useActions()
 
   const [angle, setAngle] = useState(0)
@@ -82,6 +83,51 @@ export default function LuckyWheel({ onClose }: { onClose: () => void }) {
 
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t) }, [])
 
+  // Peg-click audio: read the wheel's real on-screen angle every frame and tick
+  // each time a segment boundary passes the pointer, so the clicks follow the
+  // CSS deceleration exactly (fast and high at first, slow and low at the end).
+  const wheelRef = useRef<SVGSVGElement>(null)
+  useEffect(() => {
+    if (!spinning) return
+    const el = wheelRef.current
+    if (!el) return
+    const readAngle = () => {
+      const m = getComputedStyle(el).transform.match(/matrix\(([^)]+)\)/)
+      if (!m) return null
+      const [a, b] = m[1].split(',').map(Number)
+      return (Math.atan2(b, a) * 180) / Math.PI
+    }
+    const start = readAngle()
+    if (start === null) return
+    let prev = start
+    let total = 0
+    let lastIdx = Math.floor((start + SEG / 2) / SEG)
+    let lastT = performance.now()
+    let lastTick = 0
+    let raf = 0
+    const frame = (t: number) => {
+      const cur = readAngle()
+      if (cur !== null) {
+        const d = ((cur - prev + 540) % 360) - 180
+        total += d
+        prev = cur
+        const idx = Math.floor((start + total + SEG / 2) / SEG)
+        if (idx !== lastIdx) {
+          lastIdx = idx
+          if (t - lastTick >= 28) {
+            const speed = Math.abs(d) / Math.max(1, t - lastT) * 1000
+            sfx.wheelTick(Math.min(1, speed / 3000))
+            lastTick = t
+          }
+        }
+        lastT = t
+      }
+      raf = requestAnimationFrame(frame)
+    }
+    raf = requestAnimationFrame(frame)
+    return () => cancelAnimationFrame(raf)
+  }, [spinning])
+
   const land = (prize: Prize) => {
     if (prize.id === 'again') {
       sfx.win()
@@ -97,6 +143,9 @@ export default function LuckyWheel({ onClose }: { onClose: () => void }) {
       const gift = locked[Math.floor(Math.random() * locked.length)] ?? COSMETICS[0]
       cosmeticId = gift.id
       label = gift.name
+      // Bank the skin the moment the wheel stops. The spin is already spent, so
+      // closing the popup before tapping Collect must never lose the prize.
+      grantCosmetic(gift.id)
     }
     sfx.win()
     const next: Pending = {
@@ -144,6 +193,14 @@ export default function LuckyWheel({ onClose }: { onClose: () => void }) {
 
   const claim = async (doubled: boolean) => {
     if (!pending || claimed || busy) return
+    // Skins are single-item prizes: never doubled, nothing to pay out. They were
+    // already granted when the wheel landed; this just dismisses the reveal.
+    if (pending.cosmeticId) {
+      grantCosmetic(pending.cosmeticId)
+      setClaimed(true)
+      setError(null)
+      return
+    }
     if (doubled) {
       setBusy(true)
       const watched = await showRewardedAd()
@@ -163,14 +220,6 @@ export default function LuckyWheel({ onClose }: { onClose: () => void }) {
     }
     if (payout.coins) addCoins(payout.coins)
     if (pending.xp) addXp(pending.xp * (doubled ? 2 : 1))
-    if (pending.cosmeticId) {
-      grantCosmetic(pending.cosmeticId)
-      if (doubled) {
-        const locked = isFounder() ? [] : COSMETICS.filter((c) => !cosmetics.includes(c.id) && c.id !== pending.cosmeticId)
-        const extra = locked[Math.floor(Math.random() * locked.length)]
-        if (extra) grantCosmetic(extra.id)
-      }
-    }
     setClaimed(true)
     setBusy(false)
     setError(null)
@@ -185,7 +234,7 @@ export default function LuckyWheel({ onClose }: { onClose: () => void }) {
         
         <div className="relative mx-auto mt-5 h-64 w-64">
           <div className="absolute left-1/2 top-[-6px] z-20 -translate-x-1/2"><div className="h-0 w-0 border-x-[12px] border-t-[20px] border-x-transparent border-t-[#ffd24d]" /></div>
-          <svg viewBox="0 0 200 200" className="h-64 w-64 drop-shadow-[0_10px_30px_rgba(255,122,217,0.35)]" style={{ transform: `rotate(${angle}deg)`, transition: spinning ? 'transform 4.1s cubic-bezier(0.16,1,0.3,1)' : 'none' }}>
+          <svg ref={wheelRef} viewBox="0 0 200 200" className="h-64 w-64 drop-shadow-[0_10px_30px_rgba(255,122,217,0.35)]" style={{ transform: `rotate(${angle}deg)`, transition: spinning ? 'transform 4.1s cubic-bezier(0.16,1,0.3,1)' : 'none' }}>
             <circle cx="100" cy="100" r="98" fill="#1a0d2e" />
             {PRIZES.map((p, i) => {
               const a0 = (i * SEG - 90 - SEG / 2) * (Math.PI / 180); const a1 = ((i + 1) * SEG - 90 - SEG / 2) * (Math.PI / 180); const r = SLICE_RIM
@@ -221,8 +270,10 @@ export default function LuckyWheel({ onClose }: { onClose: () => void }) {
         <div className="mt-5 flex flex-col gap-2">
           {pending && !claimed && !spinning ? (
             <>
-              <button type="button" disabled={busy} onClick={() => { void claim(false) }} className="w-full rounded-full bg-[#6ee7a8] py-3 text-xl font-bold uppercase text-[#1a0d2e] disabled:opacity-40">Claim</button>
-              <button type="button" disabled={busy} onClick={() => { void claim(true) }} className="w-full rounded-full bg-[#ffd24d] py-3 text-xl font-bold uppercase text-[#1a0d2e] disabled:opacity-40">{busy ? 'Please wait…' : 'Double Prize (2 Ads)'}</button>
+              <button type="button" disabled={busy} onClick={() => { void claim(false) }} className="w-full rounded-full bg-[#6ee7a8] py-3 text-xl font-bold uppercase text-[#1a0d2e] disabled:opacity-40">{pending.cosmeticId ? 'Collect' : 'Claim'}</button>
+              {!pending.cosmeticId && (
+                <button type="button" disabled={busy} onClick={() => { void claim(true) }} className="w-full rounded-full bg-[#ffd24d] py-3 text-xl font-bold uppercase text-[#1a0d2e] disabled:opacity-40">{busy ? 'Please wait…' : 'Double Prize (2 Ads)'}</button>
+              )}
             </>
           ) : spinning ? (
             <button disabled className="w-full rounded-full bg-white/10 py-3 text-xl font-bold uppercase text-white/70">Spinning…</button>
@@ -237,6 +288,32 @@ export default function LuckyWheel({ onClose }: { onClose: () => void }) {
             </>
           )}
         </div>
+
+        {/* Skin reveal: same card the chest unboxing uses, with a live preview. */}
+        {pending?.cosmeticId && !claimed && !spinning && (() => {
+          const item = cosmeticById(pending.cosmeticId)
+          if (!item) return null
+          const rar = COSMETIC_RARITY[item.rarity]
+          return (
+            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-[#0a0510]/95 p-6 backdrop-blur-xl">
+              <p className="font-display text-[11px] font-black uppercase tracking-[0.35em] text-[#ffb8ec]">🎡 Lucky Wheel</p>
+              <h3 className="font-display mb-4 mt-1 text-2xl font-black text-white">New skin unlocked!</h3>
+              <div className="mythic-reveal relative w-full max-w-xs overflow-hidden rounded-[32px] border-2 bg-[#2a1c42] p-5 text-center" style={{ borderColor: rar.color, boxShadow: `0 0 44px ${rar.glow}` }}>
+                <span className="inline-block rounded px-2 py-0.5 text-[9px] font-black uppercase tracking-wider" style={{ color: rar.color, background: `${rar.color}22` }}>New!</span>
+                <div className="relative mx-auto my-3 h-32 w-32">
+                  {/* Wear it on the player's own character when it fits; otherwise show the item itself. */}
+                  {isAccessoryCompatibleById(selected, item.id)
+                    ? <CharacterView charId={selected} equippedOverride={{ ...(equipped[selected] ?? {}), [item.slot]: item.id }} className="h-32 w-32 drop-shadow-xl" />
+                    : <AccessoryArt id={item.id} className="h-32 w-32 drop-shadow-xl" />}
+                </div>
+                <h4 className="truncate text-base font-black text-white">{item.name}</h4>
+                <p className="mt-1 text-[10px] font-black uppercase tracking-[0.2em]" style={{ color: rar.color }}>{item.rarity} · {TYPE_LABEL[item.type]}</p>
+                <p className="mt-3 text-sm font-black text-[#6ee7a8]">✨ Added to your inventory</p>
+              </div>
+              <button type="button" onClick={() => { void claim(false) }} className="mt-5 w-full max-w-xs rounded-full bg-[#6ee7a8] py-3 text-xl font-bold uppercase text-[#1a0d2e]">Collect</button>
+            </div>
+          )
+        })()}
       </div>
     </div>
   )

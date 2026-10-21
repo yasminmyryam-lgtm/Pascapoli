@@ -63,6 +63,7 @@ export default function Game3D({
   const [reviveBusy, setReviveBusy] = useState(false)
   const [reviveError, setReviveError] = useState<string | null>(null)
   const reviveCountRef = useRef(0)
+  const recoveryTimer = useRef<number | null>(null)
   const [countLabel, setCountLabel] = useState<string | null>(isCoop ? '3' : null)
   const [waiting, setWaiting] = useState(!isCoop)
   const [shareMsg, setShareMsg] = useState<string | null>(null)
@@ -144,6 +145,9 @@ export default function Game3D({
 
   const giveUp = useCallback(() => {
     if (settledRef.current) return
+    // Giving up must never trigger an ad: mark the game-over interstitial as
+    // already used so the phase effect skips it. Revive keeps its rewarded ad.
+    midgameSent.current = true
     const w = worldRef.current
     if (isCoop && isHost) {
       try {
@@ -152,6 +156,33 @@ export default function Game3D({
     }
     settle()
   }, [settle, isCoop, isHost, connection])
+
+  const startRecoveryCountdown = useCallback(() => {
+    if (recoveryTimer.current != null) window.clearInterval(recoveryTimer.current)
+    countdownRef.current = true
+    activeRef.current = false
+    setWaiting(false)
+    let n = 3
+    setCountLabel('3')
+    recoveryTimer.current = window.setInterval(() => {
+      n -= 1
+      if (n > 0) setCountLabel(String(n))
+      else if (n === 0) {
+        setCountLabel('GO!')
+        sfx.score()
+      } else {
+        setCountLabel(null)
+        countdownRef.current = false
+        activeRef.current = !pausedRef.current && !worldRef.current.over && !settledRef.current
+        if (recoveryTimer.current != null) window.clearInterval(recoveryTimer.current)
+        recoveryTimer.current = null
+      }
+    }, 700)
+  }, [])
+
+  useEffect(() => () => {
+    if (recoveryTimer.current != null) window.clearInterval(recoveryTimer.current)
+  }, [])
 
   const tryRevive = useCallback(async () => {
     if (reviveBusy || settledRef.current) return
@@ -175,14 +206,14 @@ export default function Game3D({
       reviveCountRef.current = next
       revive3(worldRef.current)
       setOfferRevive(false)
-      activeRef.current = true
+      startRecoveryCountdown()
       if (isCoop && isHost) {
         try { connection?.send({ opCode: '3D_REVIVE' }) } catch {}
       }
     } finally {
       setReviveBusy(false)
     }
-  }, [reviveBusy, diamonds, isCoop, isHost, connection])
+  }, [reviveBusy, diamonds, isCoop, isHost, connection, startRecoveryCountdown])
 
   const flapWho = useCallback((who: 1 | 2) => {
     if (phase !== 'playing' || pausedRef.current || worldRef.current.over || countdownRef.current || offerRevive) return
@@ -224,7 +255,7 @@ export default function Game3D({
       if (msg.opCode === '3D_REVIVE' && guest) {
         revive3(worldRef.current)
         setOfferRevive(false)
-        activeRef.current = true
+        startRecoveryCountdown()
       }
       if (msg.opCode === '3D_OVER' && guest && msg.payload) {
         worldRef.current.over = true
@@ -248,7 +279,7 @@ export default function Game3D({
       try { connection.off('data', onData) } catch {}
       try { connection.off('close', onClose) } catch {}
     }
-  }, [connection, isHost, guest, isCoop, settle])
+  }, [connection, isHost, guest, isCoop, settle, startRecoveryCountdown])
 
   useEffect(() => {
     if (!isCoop || !isHost || !connection) return
@@ -452,7 +483,7 @@ export default function Game3D({
         </div>
 
         {countLabel && (
-          <div className="absolute inset-0 z-[90] grid place-items-center pointer-events-none">
+          <div className="pointer-events-none absolute inset-0 z-[90] grid items-start justify-items-center pt-16">
             <p className="text-8xl font-black text-white drop-shadow-xl">{countLabel}</p>
           </div>
         )}

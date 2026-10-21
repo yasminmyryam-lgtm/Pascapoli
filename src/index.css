@@ -67,6 +67,24 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* No accidental text/UI highlighting from clicks, taps or drags. Only real
+   text fields (room code, username, auth, chat) keep native selection. */
+html,
+body,
+#root,
+#root * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+#root input,
+#root textarea,
+#root [contenteditable='true'] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 /*
   The playfield fills the viewport on every screen size.
   Entity sizes live in Game.tsx (uniform scale, screen-pixel physics).
@@ -218,6 +236,12 @@ body {
   100% { transform: translate(-50%, 480px) rotate(560deg); opacity: 0.5; }
 }
 .death-fall { animation: death-fall 0.72s cubic-bezier(0.4, 0, 0.9, 0.5) forwards; }
+
+@keyframes revive-flicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.revive-flicker { animation: revive-flicker 0.16s steps(1, end) infinite; }
 
 /* Floating "+1" coin pickup */
 @keyframes coin-pop {

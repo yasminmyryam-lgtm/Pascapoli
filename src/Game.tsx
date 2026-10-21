@@ -255,13 +255,17 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
   const [countLabel, setCountLabel] = useState<string | null>(isCoop ? '3' : null)
   const [shake, setShake] = useState(false)
   const [dying, setDying] = useState(false)
+  const [spriteEpoch, setSpriteEpoch] = useState(0)
   const [particles, setParticles] = useState<{ id: number; x: number; y: number }[]>([])
   const [shareMsg, setShareMsg] = useState<string | null>(null)
   const shareTimer = useRef<number | null>(null)
   const shareCardRef = useRef<ScoreCard | null>(null)
   const [relayToast, setRelayToast] = useState<string | null>(null)
-  const [relayHold, setRelayHold] = useState(Boolean(relay))
-  const relayHoldRef = useRef(Boolean(relay))
+  // Hold the world frozen until the first tap: relay runs ("Continue the game")
+  // and every solo run ("Tap to Start", same flow as 3D). Co-op has its own 3-2-1 countdown.
+  const startsOnTap = Boolean(relay) || !isCoop
+  const [relayHold, setRelayHold] = useState(startsOnTap)
+  const relayHoldRef = useRef(startsOnTap)
   const [coinPulse, setCoinPulse] = useState(0)   // bumps to retrigger the HUD bounce
   const [chestPulse, setChestPulse] = useState(0) // same, for the chest counter
   const [offerRevive, setOfferRevive] = useState(false)
@@ -286,6 +290,9 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
   const metricsRef = useRef<PlayView>(view)
 
   const countdownRef = useRef(isCoop)   // true while the 3-2-1-GO overlay blocks play
+  const reviveLockRef = useRef(false)   // true during the post-revive countdown
+  const recoveryTimer = useRef<number | null>(null)
+  const beginRecoveryRef = useRef<(armInvuln: boolean) => void>(() => {})
   const settledRef = useRef(false)      // guarantees the run settles exactly once
   const dyingRef = useRef(false)        // guards the death sequence (ref = stable callback)
   const reviveCountRef = useRef(0)
@@ -399,7 +406,9 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
           if (guest) {
             dyingRef.current = false
             setDying(false)
+            setSpriteEpoch((n) => n + 1)
             setOfferRevive(false)
+            beginRecoveryRef.current(false)
           }
           break
         case 'OVER':
@@ -432,11 +441,77 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
 
   const giveUp = useCallback(() => {
     if (settledRef.current) return
+    // Giving up must never trigger an ad: mark the game-over interstitial as
+    // already used so the phase effect skips it. Revive keeps its rewarded ad.
+    midgameSent.current = true
     setOfferRevive(false)
     const f = finalRef.current
     if (isCoop) send({ opCode: 'OVER', payload: { score: f.score, collected: f.collected, chests: f.chests } })
     settleRun(f.score, f.collected, f.chests)
   }, [isCoop, send, settleRun])
+
+  const beginRecovery = useCallback((armInvuln: boolean) => {
+    if (recoveryTimer.current != null) window.clearInterval(recoveryTimer.current)
+    reviveLockRef.current = true
+    let n = 3
+    setCountLabel('3')
+    recoveryTimer.current = window.setInterval(() => {
+      n -= 1
+      if (n > 0) setCountLabel(String(n))
+      else if (n === 0) {
+        setCountLabel('GO!')
+        sfx.score()
+      } else {
+        setCountLabel(null)
+        reviveLockRef.current = false
+        if (armInvuln) damageCooldownFrames.current = 120
+        lastTimeRef.current = 0
+        if (recoveryTimer.current != null) window.clearInterval(recoveryTimer.current)
+        recoveryTimer.current = null
+      }
+    }, 700)
+  }, [])
+  beginRecoveryRef.current = beginRecovery
+
+  useEffect(() => () => {
+    if (recoveryTimer.current != null) window.clearInterval(recoveryTimer.current)
+  }, [])
+
+  const placeRevived = useCallback(() => {
+    const u = scaledUnits(metricsRef.current)
+    const mid = u.h / 2
+    p1Y.current = mid
+    p2Y.current = mid
+    p1Vel.current = 0
+    p2Vel.current = 0
+    const p1x = (P1_X / GAME_WIDTH) * u.w
+    const p2x = (P2_X / GAME_WIDTH) * u.w
+    const safeLeft = (isCoop ? Math.min(p1x, p2x) : p1x) - u.ghost
+    const safeRight = (isCoop ? Math.max(p1x, p2x) : p1x) + u.spacing * 0.75
+    const blocking = (x: number, width = 0) => x + width > safeLeft && x < safeRight
+    worldPipes.current = worldPipes.current.filter((p) => !blocking(p.x, u.pipeW))
+    dyingRef.current = false
+    setDying(false)
+    setSpriteEpoch((n) => n + 1)
+    setOfferRevive(false)
+    teamLivesCount.current = 1
+    damageCooldownFrames.current = 0
+    lastTimeRef.current = 0
+    if (isCoop) {
+      send({ opCode: 'REVIVE' })
+      const snap: Snap = {
+        p1Y: p1Y.current / u.h, p2Y: p2Y.current / u.h, p1V: 0, p2V: 0,
+        sc: internalScore.current, cc: Math.floor(internalCoins.current), cd: 0,
+        kc: internalChests.current,
+        pipes: worldPipes.current.map((p) => ({ x: p.x / u.w, gc: p.gapCenterY / u.h, g: p.gap / u.h })),
+        coins: worldCoins.current.map((c) => ({ x: c.x / u.w, y: c.y / u.h, l: c.looted1 || c.looted2 })),
+        chests: worldChests.current.map((k) => ({ x: k.x / u.w, y: k.y / u.h, t: k.taken })),
+      }
+      send({ opCode: 'STATE', snap })
+    }
+    rerender()
+    beginRecovery(true)
+  }, [P1_X, P2_X, beginRecovery, isCoop, rerender, send])
 
   const tryRevive = useCallback(async () => {
     if (reviveBusy || settledRef.current) return
@@ -458,26 +533,18 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
         }
       }
       reviveCountRef.current = next
-      dyingRef.current = false
-      setDying(false)
-      setOfferRevive(false)
-      teamLivesCount.current = 1
-      damageCooldownFrames.current = 150
-      p1Vel.current = PHYSICS.FLAP_POWER * metricsRef.current.scale
-      if (isCoop) p2Vel.current = PHYSICS.FLAP_POWER * metricsRef.current.scale
-      lastTimeRef.current = 0
-      if (isCoop) send({ opCode: 'REVIVE' })
+      placeRevived()
     } finally {
       setReviveBusy(false)
     }
-  }, [reviveBusy, diamonds, isCoop, send])
+  }, [reviveBusy, diamonds, placeRevived])
 
   // --- INPUT ---
   // Solo: Space, ArrowUp, W, or a tap flaps the one bird.
   // Co-op host: Space / left half = P1, W or ArrowUp / right half = P2.
   // Co-op guest: every local input sends FLAP, which the host applies to P2.
   const flapLocal = useCallback((who: 1 | 2) => {
-    if (phase === 'over' || phase === 'unboxing' || offerRevive || pausedRef.current) return
+    if (phase === 'over' || phase === 'unboxing' || offerRevive || pausedRef.current || reviveLockRef.current) return
     if (relayHoldRef.current) {
       relayHoldRef.current = false
       setRelayHold(false)
@@ -595,7 +662,7 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
       if (pausedRef.current) { lastTimeRef.current = now; animationFrameId.current = requestAnimationFrame(tick); return }
 
       // Hold the world still until the co-op 3-2-1-GO countdown finishes.
-      if (countdownRef.current || relayHoldRef.current) { lastTimeRef.current = now; animationFrameId.current = requestAnimationFrame(tick); return }
+      if (countdownRef.current || reviveLockRef.current || relayHoldRef.current) { lastTimeRef.current = now; animationFrameId.current = requestAnimationFrame(tick); return }
 
       // Freeze after a death so the revive overlay can resume this same world.
       if (dyingRef.current) { lastTimeRef.current = now; animationFrameId.current = requestAnimationFrame(tick); return }
@@ -923,13 +990,13 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
         ))}
 
         {isCoop && (
-          <div className={`absolute pointer-events-none z-20 ${dying ? 'death-fall' : ''}`} style={{ left: p2x, top: p2yV, width: ghostSize, height: ghostSize, overflow: 'visible', transform: `translate(-50%, -50%) rotate(${tilt(p2vV)}deg)`, opacity: !dying && cdV > 0 ? 0.35 : 1 }}>
+          <div key={`p2-${spriteEpoch}`} className={`absolute pointer-events-none z-20 ${dying ? 'death-fall' : ''} ${!dying && (cdV > 0 || reviveLockRef.current) ? 'revive-flicker' : ''}`} style={{ left: p2x, top: p2yV, width: ghostSize, height: ghostSize, overflow: 'visible', transform: `translate(-50%, -50%) rotate(${tilt(p2vV)}deg)` }}>
             <CharacterView charId={p2CharData.id} className="h-full w-full drop-shadow-xl" />
             <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-[#8ec5ff] text-[#170d24] px-2 py-0.5 rounded-md text-[10px] font-black uppercase">P2</div>
           </div>
         )}
 
-        <div className={`absolute pointer-events-none z-30 ${dying ? 'death-fall' : ''}`} style={{ left: p1x, top: p1yV, width: ghostSize, height: ghostSize, overflow: 'visible', transform: `translate(-50%, -50%) rotate(${tilt(p1vV)}deg)`, opacity: !dying && cdV > 0 ? 0.35 : 1 }}>
+        <div key={`p1-${spriteEpoch}`} className={`absolute pointer-events-none z-30 ${dying ? 'death-fall' : ''} ${!dying && (cdV > 0 || reviveLockRef.current) ? 'revive-flicker' : ''}`} style={{ left: p1x, top: p1yV, width: ghostSize, height: ghostSize, overflow: 'visible', transform: `translate(-50%, -50%) rotate(${tilt(p1vV)}deg)` }}>
           <CharacterView charId={p1CharData.id} className="h-full w-full drop-shadow-xl" />
           {isCoop && <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-[#6ee7a8] text-[#170d24] px-2 py-0.5 rounded-md text-[10px] font-black uppercase">P1</div>}
         </div>
@@ -944,7 +1011,7 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
         </div>
 
         {countLabel && phase === 'playing' && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center z-[93] bg-black/30">
+          <div className={`pointer-events-none absolute inset-0 z-[93] flex justify-center bg-black/30 ${reviveLockRef.current ? 'items-start pt-16' : 'items-center'}`}>
             <span key={countLabel} className="countdown-pop font-black text-white drop-shadow-[0_6px_24px_rgba(0,0,0,0.6)]" style={{ fontSize: countLabel === 'GO!' ? '6rem' : '9rem', color: countLabel === 'GO!' ? '#6ee7a8' : '#ffffff' }}>
               {countLabel}
             </span>
@@ -959,7 +1026,9 @@ export default function Game({ mode = 'NORMAL', coopConfig, connection, onClose,
 
         {relayHold && phase === 'playing' && !offerRevive && (
           <div className="absolute inset-0 z-[94] flex items-center justify-center bg-black/40 pointer-events-none">
-            <p className="text-4xl sm:text-6xl font-black text-white text-center drop-shadow-xl px-6">Continue the game</p>
+            {relay
+              ? <p className="text-4xl sm:text-6xl font-black text-white text-center drop-shadow-xl px-6">Continue the game</p>
+              : <p className="text-4xl sm:text-6xl font-black text-white text-center drop-shadow-xl px-6 animate-pulse">TAP TO START</p>}
           </div>
         )}
 

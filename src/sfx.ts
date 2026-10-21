@@ -55,6 +55,12 @@ export const sfx = {
     const notes = [523, 659, 784, 1047]
     notes.forEach((f, i) => setTimeout(() => tone({ freq: f, dur: 0.18, type: 'square', gain: 0.12 }), i * 90))
   },
+  /** Lucky Wheel peg click. `speed` 0..1: fast spin = higher pitch, slowing wheel pitches down. */
+  wheelTick: (speed = 0.5) => {
+    const s = Math.max(0, Math.min(1, speed))
+    const f = 360 + 560 * s
+    tone({ freq: f, dur: 0.045, type: 'square', gain: 0.05, slideTo: f * 0.6 })
+  },
   /** Rewarding "magical chime" for picking up a chest: bell arpeggio + shimmer tail. */
   chime: () => {
     const arp = [784, 1047, 1319, 1568]
